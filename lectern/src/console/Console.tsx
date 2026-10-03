@@ -4,6 +4,7 @@ import { course, prof, reviewProgress } from '../app/context'
 import { isLive, resetAll, update, useStore, type State } from '../state/store'
 import { IconBook, IconChevron, IconArrowOut, IconMore, IconX } from '../ui/icons'
 import { Button, Dialog, Status, Switch, cx, fmtTime, fmtDay, toast } from '../ui/kit'
+import { STUDENT_URL } from '../app/config'
 import { Overview } from './Overview'
 import { Sources } from './Sources'
 import { Rules } from './Rules'
@@ -159,7 +160,7 @@ export function Console({ page }: { page: Page }) {
           </a>
         </li>
         <li>
-          <a href="#student" target="_blank" rel="noopener" class="nav-item">
+          <a href={STUDENT_URL || '#student'} target="_blank" rel="noopener" class="nav-item">
             <span>Open in a new tab</span>
             <IconArrowOut size={15} />
           </a>

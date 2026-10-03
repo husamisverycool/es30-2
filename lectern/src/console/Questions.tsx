@@ -52,7 +52,7 @@ function representative(entries: Entry[], n = 3) {
     .map((x) => x.e)
 }
 
-function DayChart({ days }: { days: { key: string; label: string; n: number; note?: string }[] }) {
+function DayChart({ days }: { days: { key: string; label: string; full: string; n: number; note?: string }[] }) {
   const [hover, setHover] = useState<number | null>(null)
   const max = Math.max(1, ...days.map((d) => d.n))
   const step = max <= 10 ? 2 : max <= 25 ? 5 : 10
@@ -113,7 +113,7 @@ function DayChart({ days }: { days: { key: string; label: string; n: number; not
       {hover != null && (
         <div class="dc-tip" style={{ left: `${((padL + band * hover + band / 2) / W) * 100}%` }}>
           <strong class="tnum">{days[hover].n}</strong> questions
-          <span class="muted">{days[hover].label}</span>
+          <span class="muted">{days[hover].full}</span>
           {days[hover].note && <span class="muted">{days[hover].note}</span>}
         </div>
       )}
@@ -156,8 +156,8 @@ export function Questions() {
     const keys = [...new Set(entries.map((e) => dayKey(e.at)))].sort()
     return keys.map((k) => {
       const n = entries.filter((e) => dayKey(e.at) === k).length
-      const label = fmtDay(`${k}T12:00:00-04:00`).replace(/,.*/, '')
-      return { key: k, label, n }
+      const full = fmtDay(`${k}T12:00:00-04:00`)
+      return { key: k, label: full.replace(/,.*/, ''), full, n }
     })
   }, [entries])
 
@@ -183,7 +183,7 @@ export function Questions() {
       (outcomeF === 'all' || e.answer.outcome === outcomeF) &&
       (!q.trim() || e.text.toLowerCase().includes(q.trim().toLowerCase())),
   )
-  const rangeText = days.length ? `${days[0].label} to ${days[days.length - 1].label}` : ''
+  const rangeText = days.length ? `${days[0].full.replace(',', '')} to ${days[days.length - 1].full.replace(',', '')}` : ''
   const all = allSources(s)
   const source = src ? all.find((x) => x.id === src.s) : null
 

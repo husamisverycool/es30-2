@@ -42,11 +42,11 @@ export function Student() {
     return a ? fmtDate(a.at) : fmtDate(new Date().toISOString())
   }, [s.activity])
 
+  const lastEntryFor = useRef(new Map<string, string>())
   const chat = useChat(ctx, (q, r) => {
     const entry = addLiveEntry(q, classify(q, course), r.answer, r.method)
     lastEntryFor.current.set(q, entry.id)
   })
-  const lastEntryFor = useRef(new Map<string, string>())
   const asked = chat.turns.filter((t) => t.role === 'user').map((t) => (t as { text: string }).text)
   const lastTopic = asked.length ? classify(asked[asked.length - 1], course) : null
   const suggestions = useSuggestions(lastTopic, asked, STARTERS)

@@ -105,7 +105,7 @@ function prepared(question: string, ctx: TutorContext): { answer: Answer; method
 }
 
 function declinePset(question: string, ctx: TutorContext, index: Index, which: string, seed: string): TutorResult {
-  const ai = syllabusPassage(ctx, /ai|artificial/i) ?? syllabusPassage(ctx, /collab/i)
+  const ai = syllabusPassage(ctx, /\bAI\b|artificial/) ?? syllabusPassage(ctx, /collab/i)
   const hits = index.search(seed || question, 6)
   const lecture = hits.find((h) => h.source.kind === 'lecture') ?? hits[0]
   const prof = ctx.course.professor.short
