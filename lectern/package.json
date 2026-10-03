@@ -1,14 +1,13 @@
 {
   "name": "lectern",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Lectern MVP: a professor-controlled course tutor",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "vite build && node scripts/to-artifact.mjs",
+    "typecheck": "tsc --noEmit -p .",
+    "validate": "tsx scripts/validate-content.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",
     "tsx": "^4.23.15",
@@ -18,5 +17,7 @@
   },
   "dependencies": {
     "preact": "^11.0.0"
-  }
+  },
+  "private": true,
+  "type": "module"
 }

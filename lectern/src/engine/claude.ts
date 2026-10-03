@@ -23,7 +23,7 @@ let disabled = false
 export function getSample(): Promise<SampleFn | null> {
   if (disabled) return Promise.resolve(null)
   if (!pending) {
-    const c = (window as unknown as { claude?: { use?: (n: string) => Promise<unknown> } }).claude
+    const c = typeof window === 'undefined' ? undefined : (window as unknown as { claude?: { use?: (n: string) => Promise<unknown> } }).claude
     pending = c?.use ? (c.use('sample') as Promise<SampleFn | null>).catch(() => null) : Promise.resolve(null)
   }
   return pending

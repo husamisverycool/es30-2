@@ -19,6 +19,9 @@ export type ActivityKind =
   | 'copied-announcement'
   | 'posted-announcement'
   | 'flagged'
+  | 'rules-confirmed'
+  | 'paused'
+  | 'rated'
 
 export interface Activity {
   at: string
@@ -47,6 +50,12 @@ export interface State {
   announcement: { title: string; body: string; copiedAt?: string; postedAt?: string } | null
   showSample: boolean
   studentId: string
+  rulesConfirmedAt?: string
+  /** Live, but paused for a window (e.g. during an exam). */
+  pause?: { from: string; to: string; label: string }
+  /** Professor's rating of each previewed answer, keyed by question text key. */
+  ratings: Record<string, 'good' | 'poor'>
+  previewCount: number
 }
 
 const KEY = 'lectern:chem11:v1'
@@ -65,6 +74,8 @@ const fresh = (): State => ({
   activity: [],
   announcement: null,
   showSample: true,
+  ratings: {},
+  previewCount: 0,
   studentId: `Student ${String(1000 + Math.floor(Math.random() * 8999)).padStart(4, '0')}`,
 })
 
@@ -95,6 +106,15 @@ function persist() {
 }
 
 export const canPersist = () => persistOk
+
+/** Whether students can use the tutor right now. */
+export function isLive(s: State, now = Date.now()) {
+  return s.live && !inPause(s, now)
+}
+
+export function inPause(s: State, now = Date.now()) {
+  return !!s.pause && new Date(s.pause.from).getTime() <= now && now < new Date(s.pause.to).getTime()
+}
 
 export function getState() {
   return state

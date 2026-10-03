@@ -152,15 +152,41 @@ function notCovered(ctx: TutorContext, hits: Hit[]): TutorResult {
   }
 }
 
+const splitSentences = (text: string) => (text.match(/[^.!?]+[.!?]+["”’)]*\s*/g) ?? [text]).map((s) => s.trim()).filter(Boolean)
+
+/** The best run of sentences across the top passages, weighting the question's rarer words. */
+export function bestQuote(hits: Hit[], query: string, len = 2) {
+  const q = [...new Set(tokens(query))]
+  const pool = hits.slice(0, 4)
+  const sents = pool.map((h) => splitSentences(h.passage.text))
+  const df = new Map<string, number>()
+  const all = sents.flat()
+  for (const s of all) for (const t of new Set(tokens(s))) df.set(t, (df.get(t) ?? 0) + 1)
+  const w = (t: string) => Math.log(1 + all.length / (1 + (df.get(t) ?? 0)))
+  const top = pool[0]?.score ?? 1
+  let best = { hit: pool[0], text: pool[0]?.passage.text ?? '', v: -1 }
+  pool.forEach((h, hi) => {
+    const ss = sents[hi]
+    for (let i = 0; i < ss.length; i++) {
+      const win = ss.slice(i, i + len)
+      const toks = new Set(tokens(win.join(' ')))
+      const v = q.reduce((sum, t) => sum + (toks.has(t) ? w(t) : 0), 0) * (0.55 + 0.45 * (h.score / top))
+      if (v > best.v) best = { hit: h, text: win.join(' '), v }
+    }
+  })
+  return best
+}
+
 function quoted(question: string, hits: Hit[]): TutorResult {
-  const [first, ...rest] = hits
-  const second = rest.find((h) => h.source.id !== first.source.id && h.score > first.score * 0.45)
+  const main = bestQuote(hits, question, 3)
+  const rest = hits.filter((h) => h.source.id !== main.hit.source.id && h.passage.id !== main.hit.passage.id)
+  const second = rest.length ? bestQuote(rest, question, 1) : null
   const lines = [
-    `Here’s how this is explained in **${sourceShort(first.source)} at ${first.passage.loc}**:`,
-    `> ${bestSentences(first.passage.text, question, 3)} [[${first.passage.id}]]`,
+    `Here’s how this is explained in **${sourceShort(main.hit.source)} at ${main.hit.passage.loc}**:`,
+    `> ${main.text} [[${main.hit.passage.id}]]`,
   ]
-  if (second) {
-    lines.push(`It also comes up in **${citeLabel(second.source, second.passage)}**: “${bestSentences(second.passage.text, question, 1)}” [[${second.passage.id}]]`)
+  if (second && second.v > main.v * 0.35) {
+    lines.push(`It also comes up in **${citeLabel(second.hit.source, second.hit.passage)}**: “${second.text}” [[${second.hit.passage.id}]]`)
   }
   return { answer: { outcome: 'answered', body: lines.join('\n\n') }, method: 'quoted', read: hits }
 }

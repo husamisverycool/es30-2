@@ -9,6 +9,7 @@ const SUB: Record<string, string> = {
 const STOP = new Set(
   ('a an and are as at be been but by can could did do does doing for from had has have how i if in into is it its ' +
     'just me my of on or our so some such than that the their them then there these they this to too us was we were ' +
+    'happen happens happened would will should know tell explain understand wondering question idea thing things ' +
     'what when where which who why will with would you your im ive dont doesnt isnt cant pls please thanks thank ' +
     'someone anyone help confused get got also like really kind sort mean one way about lol ok okay hi hey still')
     .split(' '),
@@ -53,6 +54,16 @@ const SYNONYMS: Record<string, string[]> = {
   exam: ['midterm'],
   approximation: ['small', 'x', '5'],
   small: ['approximation'],
+  double: ['halve', 'compress', 'increase', 'change'],
+  halve: ['double', 'compress', 'change'],
+  compress: ['volume', 'pressure', 'decrease'],
+  increase: ['add', 'raise'],
+  decrease: ['remove', 'lower'],
+  add: ['increase'],
+  remove: ['decrease'],
+  temperature: ['heat', 'exothermic', 'endothermic'],
+  catalyst: ['rate', 'activation'],
+  buffer: ['henderson', 'hasselbalch'],
 }
 
 export function fold(s: string): string {
