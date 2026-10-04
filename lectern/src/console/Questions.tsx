@@ -60,7 +60,10 @@ function repeats(entries: Entry[]): Repeat[] {
     if (group.length < 3) continue
     group.forEach((k) => used.add(k))
     // Lead with the question closest to all the others.
-    const lead = group.map((k) => ({ k, s: group.reduce((sum, o) => sum + (o === k ? 0 : sim(vec[k], vec[o])), 0) })).sort((a, b) => b.s - a.s)[0].k
+    // Lead with the question closest to all the others, preferring one that isn't a problem-set request.
+    const lead = group
+      .map((k) => ({ k, s: group.reduce((sum, o) => sum + (o === k ? 0 : sim(vec[k], vec[o])), 0) * (entries[k].answer.outcome === 'declined_pset' ? 0.5 : 1) }))
+      .sort((a, b) => b.s - a.s)[0].k
     const members = group.map((k) => entries[k])
     out.push({ lead: entries[lead], members, students: new Set(members.map((m) => m.student)).size })
   }
