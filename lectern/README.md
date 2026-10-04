@@ -2,7 +2,7 @@
 
 Lectern gives a professor an AI tutor for their course, built only from materials they already produce: lecture recordings, slides, the syllabus, past exams and their own Ed answers. The professor approves every source, sees every question, keeps a rule against problem-set solutions, and owns the off switch.
 
-**Live MVP:** _link added after publishing_
+**Live MVP:** https://claude.ai/artifact/Dsn1kNKUcrwKrWMKboUerX (professor console) · https://claude.ai/artifact/Dsn1kNKUcrwKrWMKboUerX#student (student view)
 
 ## The research question (from Assignment 2a)
 
@@ -23,7 +23,7 @@ It also covers the two behaviours the experiment measures:
 ## What a professor does with it
 
 1. **Overview**: the 15-minute checklist, what was already done for her, and the four controls she keeps.
-2. **Sources**: approve or leave out each of 34 sources, with a recommendation for each. Preview any transcript. Add her own files.
+2. **Sources**: approve or leave out each of 33 sources, with a recommendation for each. Preview any transcript. Add her own files.
 3. **Rules**: two locked rules that are part of the offer, four she can switch, a notation table, and her own rules in plain English. Each rule has a "Try it" button.
 4. **Preview**: 20 real-style questions from her Ed history, a test chat, "Sounds right / Not how I'd say it", and "Why this answer", which shows the passages and rules behind each answer.
 5. **Questions**: a written weekly digest, where the class is stuck by topic, questions per day, and the full log with student names hidden. A sample week shows what this looks like with 230 students.

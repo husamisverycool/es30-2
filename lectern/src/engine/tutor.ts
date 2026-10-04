@@ -1,7 +1,7 @@
 import type { Answer, Course, Outcome, Passage, Source } from '../data/types'
 import { Index, type Hit } from './search'
 import { asksExamContent, isLogistics, matchPset } from './guard'
-import { fold, overlap, tokens } from './text'
+import { expand, fold, overlap, sentences, tokens } from './text'
 import { ruleOn } from './rules'
 import { disableSample, getSample, PERMANENT, type SampleError } from './claude'
 
@@ -53,11 +53,11 @@ export const citedIds = (body: string) => [...body.matchAll(/\[\[([A-Za-z0-9_.:-
 
 /** The sentence in a passage that best answers the question, for short quotes. */
 export function bestSentences(text: string, query: string, max = 2): string {
-  const sentences = text.match(/[^.!?]+[.!?]+["”’)]*\s*/g) ?? [text]
-  if (sentences.length <= max) return text.trim()
-  const scored = sentences.map((s, i) => ({ s: s.trim(), i, v: overlap(s, query) }))
+  const ss = sentences(text)
+  if (ss.length <= max) return text.trim()
+  const scored = ss.map((s, i) => ({ s, i, v: overlap(s, query) }))
   const top = [...scored].sort((a, b) => b.v - a.v)[0]
-  const start = Math.max(0, Math.min(top.i, sentences.length - max))
+  const start = Math.max(0, Math.min(top.i, ss.length - max))
   return scored
     .slice(start, start + max)
     .map((x) => x.s)
@@ -106,28 +106,62 @@ function prepared(question: string, ctx: TutorContext): { answer: Answer; method
 
 function declinePset(question: string, ctx: TutorContext, index: Index, which: string, seed: string): TutorResult {
   const ai = syllabusPassage(ctx, /\bAI\b|artificial/) ?? syllabusPassage(ctx, /collab/i)
-  const hits = index.search(seed || question, 6)
-  const lecture = hits.find((h) => h.source.kind === 'lecture') ?? hits[0]
+  const query = seed ? `${seed} ${question}` : question
+  const hits = index.search(query, 8)
+  const lectures = hits.filter((h) => h.source.kind === 'lecture')
   const prof = ctx.course.professor.short
   const parts = [
     `I can’t work through ${which} or check an answer for it. ${prof} asks that problem sets be your own work.${ai ? ` [[${ai.id}]]` : ''}`,
   ]
-  if (lecture) {
-    const quote = bestSentences(lecture.passage.text, seed || question, 1)
+  if (lectures.length) {
+    const q = bestQuote(lectures, query, index, ctx.sources, 2)
     parts.push(
-      `Here’s where the idea you need is taught: **${sourceShort(lecture.source)} at ${lecture.passage.loc}**. “${quote}” [[${lecture.passage.id}]]`,
+      `Here’s where the idea you need is taught: **${sourceShort(q.hit.source)} at ${q.hit.passage.loc}**. “${q.text}” ${q.ids.map((id) => `[[${id}]]`).join(' ')}`,
     )
   }
   parts.push(`If you’re still stuck after rewatching that, bring your attempt to office hours (${ctx.course.officeHours}).`)
   return { answer: { outcome: 'declined_pset', body: parts.join('\n\n') }, method: 'guard', read: hits }
 }
 
-function routeToTfs(ctx: TutorContext): TutorResult {
-  const late = syllabusPassage(ctx, /late|extension/i)
-  const regrade = syllabusPassage(ctx, /regrade/i)
-  const lines = [`Grades, regrades and extensions are handled by the course staff, not by me.`]
-  if (regrade) lines.push(`On regrades: “${bestSentences(regrade.text, 'regrade request', 2)}” [[${regrade.id}]]`)
-  if (late) lines.push(`On extensions: “${bestSentences(late.text, 'extension request', 2)}” [[${late.id}]]`)
+// What the student is asking about, and the words that mark the syllabus sentence that answers it.
+const STAFF_INTENTS: [RegExp, RegExp, RegExp][] = [
+  [/\bsections?\b/, /section/i, /staff/i],
+  [/conflict|different time|make-?up|reschedul|away game|miss(ed)? the (midterm|exam)/, /conflict/i, /exam/i],
+  [/extension|extend|late/, /extension/i, /late/i],
+  [/regrade|graded|points back|score|wrong/, /regrade/i, /regrade/i],
+  [/gradescope|upload|missing/, /gradescope/i, /problem sets/i],
+  [/accommodat|disabilit/, /accommodation/i, /accommodation/i],
+  [/sick|ill\b|emergency|dean/, /illness|emergency|resident dean/i, /late|accommodation/i],
+]
+
+function routeToTfs(ctx: TutorContext, question: string, index: Index): TutorResult {
+  const f = fold(question)
+  const syl = ctx.sources.find((s) => s.kind === 'syllabus' && ctx.approved(s.id))
+  const quotes: { loc: string; id: string; text: string }[] = []
+  for (const [ask, mark, prefer] of STAFF_INTENTS) {
+    if (!syl || !ask.test(f) || quotes.length >= 1) continue
+    // The section named for the topic first ("Late work" for extensions), then any section that mentions it.
+    const ordered = [...syl.passages.filter((p) => prefer.test(p.loc)), ...syl.passages.filter((p) => !prefer.test(p.loc))]
+    for (const p of ordered) {
+      if (/\bAI\b|collab|schedule/i.test(p.loc)) continue
+      const ss = sentences(p.text)
+      const i = ss.findIndex((s) => mark.test(s))
+      if (i < 0) continue
+      quotes.push({ loc: p.loc, id: p.id, text: ss.slice(i, i + 2).join(' ') })
+      break
+    }
+  }
+  // Then who to contact, from the staff section.
+  const staff = syl?.passages.find((p) => /staff/i.test(p.loc))
+  const contact = staff && sentences(staff.text).find((s) => /head (teaching fellow|TF)/i.test(s))
+  if (staff && contact && !quotes.some((q) => q.text.includes(contact))) quotes.push({ loc: staff.loc, id: staff.id, text: contact })
+  // Nothing matched a known intent: fall back to the closest syllabus section.
+  if (!quotes.length) {
+    const h = index.search(question, 20).find((x) => x.source.kind === 'syllabus' && !/\bAI\b|collab|schedule/i.test(x.passage.loc))
+    if (h) quotes.push({ loc: h.passage.loc, id: h.passage.id, text: bestQuote([h], question, index, ctx.sources, 2).text })
+  }
+  const lines = [`That’s one for the course staff, not for me: grades, extensions, exam conflicts and sections are theirs to decide.`]
+  for (const q of quotes) lines.push(`From the syllabus, under ${q.loc}: “${q.text}” [[${q.id}]]`)
   lines.push(`For anything the syllabus doesn’t cover, post privately on Ed so a TF can look at your case.`)
   return { answer: { outcome: 'sent_to_tfs', body: lines.join('\n\n') }, method: 'guard', read: [] }
 }
@@ -141,54 +175,130 @@ function examContent(ctx: TutorContext): TutorResult {
   return { answer: { outcome: 'answered', body: lines.join('\n\n') }, method: 'guard', read: [] }
 }
 
-function notCovered(ctx: TutorContext, hits: Hit[]): TutorResult {
+function notCovered(ctx: TutorContext, hits: Hit[], ahead?: Upcoming | null): TutorResult {
+  const prof = ctx.course.professor.short
+  const first = ahead
+    ? `${prof} hasn’t taught this yet. ${ahead.when.startsWith('Lecture') ? `The syllabus has it in ${ahead.when}: ${ahead.topic}.` : `The syllabus schedules ${ahead.topic} for ${ahead.when}.`} [[${ahead.passage.id}]] Until then I’d only be guessing, and I won’t.`
+    : `I couldn’t find this in the materials ${prof} has approved, so I won’t guess.`
   return {
     answer: {
       outcome: 'not_covered',
-      body: `I couldn’t find this in the materials ${ctx.course.professor.short} has approved, so I won’t guess.\n\nPost it on Ed, where ${ctx.course.professor.short} and the TFs answer, or bring it to office hours (${ctx.course.officeHours}).`,
+      body: `${first}\n\nPost it on Ed, where ${prof} and the TFs answer, or bring it to office hours (${ctx.course.officeHours}).`,
     },
     method: 'guard',
     read: hits,
   }
 }
 
-const splitSentences = (text: string) => (text.match(/[^.!?]+[.!?]+["”’)]*\s*/g) ?? [text]).map((s) => s.trim()).filter(Boolean)
+// Slides read as fragments and the syllabus as policy, so prefer spoken explanations for the main quote.
+const QUOTE_KIND: Record<string, number> = { slides: 0.75, syllabus: 0.85 }
+
+export interface Quote {
+  hit: Hit
+  text: string
+  /** Passage ids the quote spans: one, or two when it runs on into the next part of a transcript. */
+  ids: string[]
+  v: number
+}
 
 /** The best run of sentences across the top passages, weighting the question's rarer words. */
-export function bestQuote(hits: Hit[], query: string, len = 2) {
-  const q = [...new Set(tokens(query))]
+export function bestQuote(hits: Hit[], query: string, index: Index, sources: Source[], len = 2): Quote {
+  const raw = tokens(query)
+  const q = expand(raw)
+  const pairs = raw.slice(1).map((t, i) => `${raw[i]} ${t}`)
   const pool = hits.slice(0, 4)
-  const sents = pool.map((h) => splitSentences(h.passage.text))
-  const df = new Map<string, number>()
-  const all = sents.flat()
-  for (const s of all) for (const t of new Set(tokens(s))) df.set(t, (df.get(t) ?? 0) + 1)
-  const w = (t: string) => Math.log(1 + all.length / (1 + (df.get(t) ?? 0)))
   const top = pool[0]?.score ?? 1
-  let best = { hit: pool[0], text: pool[0]?.passage.text ?? '', v: -1 }
-  pool.forEach((h, hi) => {
-    const ss = sents[hi]
-    for (let i = 0; i < ss.length; i++) {
+  let best: Quote = { hit: pool[0], text: pool[0]?.passage.text ?? '', ids: pool[0] ? [pool[0].passage.id] : [], v: -1 }
+  for (const h of pool) {
+    const own = sentences(h.passage.text).map((s) => ({ s, id: h.passage.id }))
+    // A transcript runs on: let a quote continue into the next passage, so it doesn't stop just before the answer.
+    const src = sources.find((x) => x.id === h.source.id)
+    const idx = src?.passages.findIndex((p) => p.id === h.passage.id) ?? -1
+    const next = src && src.kind === 'lecture' && idx >= 0 ? src.passages[idx + 1] : undefined
+    const ss = next ? [...own, ...sentences(next.text).slice(0, len).map((s) => ({ s, id: next.id }))] : own
+    for (let i = 0; i < own.length; i++) {
       const win = ss.slice(i, i + len)
-      const toks = new Set(tokens(win.join(' ')))
-      const v = q.reduce((sum, t) => sum + (toks.has(t) ? w(t) : 0), 0) * (0.55 + 0.45 * (h.score / top))
-      if (v > best.v) best = { hit: h, text: win.join(' '), v }
+      const text = win.map((x) => x.s).join(' ')
+      const wt = tokens(text)
+      const set = new Set(wt)
+      const bi = new Set(wt.slice(1).map((t, j) => `${wt[j]} ${t}`))
+      let v = q.reduce((sum, { t, w }) => sum + (set.has(t) ? w * Math.max(0.2, index.idf(t)) : 0), 0)
+      v *= 1 + 0.3 * pairs.filter((p) => bi.has(p)).length
+      v *= Math.pow(h.score / top, 1.5) * (QUOTE_KIND[h.source.kind] ?? 1)
+      // A policy section states its rule first.
+      if (h.source.kind === 'syllabus' && i === 0) v *= 1.2
+      // A lecture's opening and closing passages are mostly logistics and previews.
+      if (src?.kind === 'lecture' && (idx === 0 || idx === src.passages.length - 1)) v *= 0.8
+      // Between equal windows, prefer the tighter one.
+      v /= 1 + wt.length / 400
+      if (v > best.v) best = { hit: h, text, ids: [...new Set(win.map((x) => x.id))], v }
     }
-  })
+  }
   return best
 }
 
-function quoted(question: string, hits: Hit[]): TutorResult {
-  const main = bestQuote(hits, question, 3)
-  const rest = hits.filter((h) => h.source.id !== main.hit.source.id && h.passage.id !== main.hit.passage.id)
-  const second = rest.length ? bestQuote(rest, question, 1) : null
-  const lines = [
-    `Here’s how this is explained in **${sourceShort(main.hit.source)} at ${main.hit.passage.loc}**:`,
-    `> ${main.text} [[${main.hit.passage.id}]]`,
-  ]
-  if (second && second.v > main.v * 0.35) {
-    lines.push(`It also comes up in **${citeLabel(second.hit.source, second.hit.passage)}**: “${second.text}” [[${second.hit.passage.id}]]`)
+function quoted(question: string, all: Hit[], index: Index, ctx: TutorContext): TutorResult {
+  const hits = all.filter((h) => !(h.source.kind === 'syllabus' && /\bAI\b|collab/i.test(h.passage.loc))).concat()
+  if (!hits.length) hits.push(...all)
+  const main = bestQuote(hits, question, index, ctx.sources, 3)
+  // Course policy passages are for policy questions, not a second quote on chemistry.
+  const policy = (h: Hit) => h.source.kind === 'syllabus' && /\bAI\b|collab/i.test(h.passage.loc)
+  const rest = hits.filter((h) => h.source.id !== main.hit.source.id && !policy(h))
+  const second = rest.length ? bestQuote(rest, question, index, ctx.sources, 2) : null
+  const where = main.hit.source.kind === 'lecture' ? `${sourceShort(main.hit.source)} at ${main.hit.passage.loc}` : citeLabel(main.hit.source, main.hit.passage)
+  const lines = [`The passage in ${ctx.course.professor.short}’s materials that best matches your question is from **${where}**:`, `> ${main.text} ${main.ids.map((id) => `[[${id}]]`).join(' ')}`]
+  if (second && second.v > main.v * 0.4) {
+    lines.push(`It also comes up in **${citeLabel(second.hit.source, second.hit.passage)}**: “${second.text}” ${second.ids.map((id) => `[[${id}]]`).join(' ')}`)
   }
-  return { answer: { outcome: 'answered', body: lines.join('\n\n') }, method: 'quoted', read: hits }
+  return { answer: { outcome: 'answered', body: lines.join('\n\n') }, method: 'quoted', read: all }
+}
+
+interface Upcoming {
+  when: string
+  topic: string
+  passage: Passage
+}
+
+/** Topics the syllabus schedule lists for lectures that haven't happened yet. */
+function upcomingTopics(ctx: TutorContext): Upcoming[] {
+  const syl = ctx.sources.find((s) => s.kind === 'syllabus' && ctx.approved(s.id))
+  const sched = syl?.passages.find((p) => /schedule/i.test(p.loc))
+  if (!sched) return []
+  const taught = Math.max(
+    0,
+    ...ctx.sources.filter((s) => s.kind === 'lecture' && ctx.approved(s.id)).map((s) => Number(s.title.match(/lecture\s*(\d+)/i)?.[1] ?? 0)),
+  )
+  const out: Upcoming[] = []
+  for (const m of sched.text.matchAll(/Lecture (\d+), ([A-Z][a-z]{2} [A-Z][a-z]{2} \d+): ([^.(]+)/g)) {
+    if (Number(m[1]) > taught) out.push({ when: `Lecture ${m[1]} (${m[2]})`, topic: m[3].trim(), passage: sched })
+  }
+  const after = sched.text.match(/After the midterm: ([^.]+)/)
+  if (after)
+    for (const t of after[1].split(/,\s*|\s+and\s+/)) {
+      const topic = t.replace(/^(then|and)\s+/, '').trim()
+      if (topic) out.push({ when: 'after Midterm 1', topic, passage: sched })
+    }
+  return out
+}
+
+/** Does the question ask about something the course hasn't reached? Matches on words rare in the materials taught so far. */
+function aheadOfCourse(question: string, ctx: TutorContext, index: Index, hits: Hit[]): Upcoming | null {
+  const raw = tokens(question)
+  const q = new Set(expand(raw).map((x) => x.t))
+  const qPairs = new Set(raw.slice(1).map((t, i) => `${raw[i]} ${t}`))
+  const upcoming = upcomingTopics(ctx)
+  if (!upcoming.length) return null
+  // The schedule itself mentions every upcoming topic; it doesn't count as having taught it.
+  const top = hits.find((h) => h.passage.id !== upcoming[0].passage.id)?.score ?? 0
+  for (const u of upcoming) {
+    const tt = tokens(u.topic)
+    // A rare phrase ("weak base") is a strong signal even when nearby material scores well.
+    const pairs = tt.slice(1).map((t, i) => `${tt[i]} ${t}`)
+    if (pairs.some((p) => qPairs.has(p) && index.bigramDf(p) <= 2)) return u
+    const words = tt.filter((t) => t.length > 2 && index.df_(t) <= 3)
+    if (words.some((t) => q.has(t)) && top < 14) return u
+  }
+  return null
 }
 
 function buildPrompt(question: string, hits: Hit[], ctx: TutorContext, history: AskOptions['history']) {
@@ -270,7 +380,8 @@ export async function ask(question: string, ctx: TutorContext, opts: AskOptions 
     }
   }
 
-  // 2. Guards that never reach a model.
+  // 2. Guards that never reach a model. Grades and extensions first: "can I get an extension on PS5" isn't PS5 work.
+  if (ruleOn(ctx.rules, 'tfs') && isLogistics(question)) return routeToTfs(ctx, question, index)
   const pset = matchPset(question, recognize)
   if (pset) {
     const which = pset.passage ? `${sourceShort(pset.source)} ${pset.passage.loc.toLowerCase()}` : `that ${sourceShort(pset.source)} problem`
@@ -278,7 +389,6 @@ export async function ask(question: string, ctx: TutorContext, opts: AskOptions 
     opts.onRead?.(r.read)
     return r
   }
-  if (ruleOn(ctx.rules, 'tfs') && isLogistics(question)) return routeToTfs(ctx)
   if (ruleOn(ctx.rules, 'exam') && asksExamContent(question)) return examContent(ctx)
 
   // 3. Read the approved materials.
@@ -288,10 +398,12 @@ export async function ask(question: string, ctx: TutorContext, opts: AskOptions 
   opts.onRead?.(hits)
   const strong = hits.length > 0 && hits[0].score >= 2.2 && tokens(question).length > 0
   if (!strong) return notCovered(ctx, hits)
+  const ahead = aheadOfCourse(question, ctx, index, hits)
+  if (ahead) return notCovered(ctx, hits, ahead)
 
   // 4. Claude writes from those passages when this viewer can use it; otherwise quote them.
   const sample = await getSample()
-  if (!sample) return quoted(question, hits)
+  if (!sample) return quoted(question, hits, index, ctx)
   const allowed = new Set(hits.map((h) => h.passage.id))
   try {
     let outcome: Outcome | null = null
@@ -318,7 +430,7 @@ export async function ask(question: string, ctx: TutorContext, opts: AskOptions 
       const s = splitOutcome(e.text)
       if (s.body) return { answer: { outcome: s.outcome ?? 'answered', body: cleanCitations(s.body, allowed) }, method: 'claude', read: hits, interrupted: true }
     }
-    return quoted(question, hits)
+    return quoted(question, hits, index, ctx)
   }
 }
 

@@ -65,7 +65,7 @@ export function matchPset(question: string, recognize: Source[]): PsetMatch | nu
 }
 
 const LOGISTICS =
-  /\b(regrade|re-grade|extension|extend|late (pass|day|submission|work)|turn(ed)? in late|grade[sd]?\b|my score|points? (off|back)|curve|dean'?s excuse|sick|absence|accommodat|drop the class|missed (the )?(midterm|exam|quiz))\b/
+  /\b(regrade|re-grade|extension|extend|late (pass|day|submission|work)|turn(ed)? in late|grade[sd]?\b|my score|points? (off|back)|curve|dean'?s excuse|sick|absence|accommodat|drop the class|missed (the )?(midterm|exam|quiz)|gradescope|didn'?t (upload|submit)|missing (problem|page|submission)|(exam|midterm) conflict|conflict with (the )?(midterm|exam)|different time|make-?up (exam|midterm)|reschedul|switch(ing)? sections?|change (my )?section|section (change|swap))/
 
 export function isLogistics(question: string): boolean {
   return LOGISTICS.test(fold(question))

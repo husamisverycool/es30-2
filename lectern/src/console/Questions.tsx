@@ -3,7 +3,7 @@ import { course } from '../app/context'
 import type { LogEntry, Outcome } from '../data/types'
 import { update, useStore, type LiveEntry } from '../state/store'
 import { outcomeLabel, questionKey, type TutorResult } from '../engine/tutor'
-import { overlap } from '../engine/text'
+import { expand, tokens } from '../engine/text'
 import { AnswerBody } from '../shared/Answer'
 import { SourceView } from '../shared/SourceView'
 import { allSources } from '../app/context'
@@ -37,19 +37,34 @@ function outcomeSentence(count: (o: Outcome) => number) {
   return s.charAt(0).toUpperCase() + s.slice(1) + '.'
 }
 
-function representative(entries: Entry[], n = 3) {
-  const seen = new Set<string>()
-  entries = entries.filter((e) => {
-    const k = e.text.trim().toLowerCase()
-    if (seen.has(k)) return false
-    seen.add(k)
-    return true
-  })
-  return entries
-    .map((e) => ({ e, s: entries.reduce((sum, o) => (o === e ? sum : sum + overlap(e.text, o.text)), 0) }))
-    .sort((a, b) => b.s - a.s)
-    .slice(0, n)
-    .map((x) => x.e)
+interface Repeat {
+  lead: Entry
+  members: Entry[]
+  students: number
+}
+
+/** Groups of questions that ask the same thing in different words, within a topic. */
+function repeats(entries: Entry[]): Repeat[] {
+  const vec = entries.map((e) => new Set(expand(tokens(e.text)).map((x) => x.t)))
+  const sim = (a: Set<string>, b: Set<string>) => {
+    let n = 0
+    for (const t of a) if (b.has(t)) n++
+    return n / Math.max(1, Math.min(a.size, b.size))
+  }
+  const used = new Set<number>()
+  const out: Repeat[] = []
+  for (let i = 0; i < entries.length; i++) {
+    if (used.has(i)) continue
+    const group = [i]
+    for (let j = i + 1; j < entries.length; j++) if (!used.has(j) && entries[j].topic === entries[i].topic && sim(vec[i], vec[j]) >= 0.34) group.push(j)
+    if (group.length < 3) continue
+    group.forEach((k) => used.add(k))
+    // Lead with the question closest to all the others.
+    const lead = group.map((k) => ({ k, s: group.reduce((sum, o) => sum + (o === k ? 0 : sim(vec[k], vec[o])), 0) })).sort((a, b) => b.s - a.s)[0].k
+    const members = group.map((k) => entries[k])
+    out.push({ lead: entries[lead], members, students: new Set(members.map((m) => m.student)).size })
+  }
+  return out.sort((a, b) => b.members.length - a.members.length)
 }
 
 function DayChart({ days }: { days: { key: string; label: string; full: string; n: number; note?: string }[] }) {
@@ -139,6 +154,7 @@ export function Questions() {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState<Entry | null>(null)
   const [cluster, setCluster] = useState<string | null>(null)
+  const [repeat, setRepeat] = useState<Repeat | null>(null)
   const [fix, setFix] = useState<{ q: string; r: TutorResult } | null>(null)
   const [src, setSrc] = useState<{ s: string; p?: string } | null>(null)
 
@@ -176,7 +192,7 @@ export function Questions() {
   }, [entries, days])
 
   const maxN = Math.max(1, ...topics.map((t) => t.n))
-  const top = topics[0]
+  const reps = useMemo(() => repeats(entries).slice(0, 3), [entries])
   const rows = entries.filter(
     (e) =>
       (topicF === 'all' || e.topic === topicF) &&
@@ -227,20 +243,24 @@ export function Questions() {
             <p class="digest-lede">
               <strong class="tnum">{entries.length}</strong> questions from <strong class="tnum">{students}</strong> students, {rangeText}. {outcomeSentence(count)}
             </p>
-            {top && (
+            {reps.length > 0 && (
               <div class="digest-top">
-                <p>
-                  The biggest cluster is <strong>{top.topic}</strong>, with {top.n} questions. Typical questions:
-                </p>
-                <ul>
-                  {representative(top.es).map((e) => (
-                    <li key={e.id}>
-                      <button type="button" class="quote-btn" onClick={() => setOpen(e)}>
-                        “{e.text}”
+                <p>Asked again and again, in different words:</p>
+                <ol class="repeats">
+                  {reps.map((r) => (
+                    <li key={r.lead.id}>
+                      <button type="button" class="repeat" onClick={() => setRepeat(r)}>
+                        <span class="repeat-n tnum">{r.members.length}</span>
+                        <span class="repeat-text">
+                          <span class="repeat-q">“{r.lead.text}”</span>
+                          <span class="repeat-meta">
+                            {r.lead.topic} · {r.students} students
+                          </span>
+                        </span>
                       </button>
                     </li>
                   ))}
-                </ul>
+                </ol>
               </div>
             )}
           </section>
@@ -432,6 +452,38 @@ export function Questions() {
         <p class="muted small cluster-foot">
           A cluster this size may be worth five minutes at the start of the next lecture, or a note to the TFs for section.
         </p>
+      </Panel>
+
+      <Panel
+        open={!!repeat}
+        onClose={() => setRepeat(null)}
+        width={560}
+        title={repeat ? `${repeat.members.length} versions of one question` : ''}
+        sub={repeat ? `${repeat.lead.topic} · asked by ${repeat.students} students` : undefined}
+      >
+        <ul class="cluster-list">
+          {repeat?.members.map((e) => (
+            <li key={e.id}>
+              <button
+                type="button"
+                class="cluster-q"
+                onClick={() => {
+                  setRepeat(null)
+                  setOpen(e)
+                }}
+              >
+                <span>{e.text}</span>
+                <span class="cluster-meta">
+                  <span class="muted tnum">
+                    {fmtDay(e.at).replace(/,.*/, '')} {fmtTime(e.at)}
+                  </span>
+                  <Status tone={TONE[e.answer.outcome]}>{outcomeLabel[e.answer.outcome]}</Status>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <p class="muted small cluster-foot">One clear answer in lecture or a pinned Ed post would cover all of these. You can also write the tutor’s answer yourself from any of them.</p>
       </Panel>
 
       <Panel open={!!source} onClose={() => setSrc(null)} title={source?.title ?? ''} width={520}>

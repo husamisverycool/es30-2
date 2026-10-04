@@ -10,6 +10,7 @@ const STOP = new Set(
   ('a an and are as at be been but by can could did do does doing for from had has have how i if in into is it its ' +
     'just me my of on or our so some such than that the their them then there these they this to too us was we were ' +
     'happen happens happened would will should know tell explain understand wondering question idea thing things ' +
+    'anything something nothing everything work works working mean means different difference ' +
     'what when where which who why will with would you your im ive dont doesnt isnt cant pls please thanks thank ' +
     'someone anyone help confused get got also like really kind sort mean one way about lol ok okay hi hey still')
     .split(' '),
@@ -64,6 +65,26 @@ const SYNONYMS: Record<string, string[]> = {
   temperature: ['heat', 'exothermic', 'endothermic'],
   catalyst: ['rate', 'activation'],
   buffer: ['henderson', 'hasselbalch'],
+  squeeze: ['compress', 'volume'],
+  middle: ['intermediate', 'step'],
+  round: ['digit', 'end'],
+  orbital: ['bonding', 'atomic'],
+  hybridization: ['bonding'],
+  lewis: ['bonding'],
+  vsepr: ['bonding', 'shape'],
+  configuration: ['electron', 'atomic'],
+  quantum: ['atomic'],
+  gibbs: ['entropy', 'spontaneous'],
+  spontaneous: ['gibbs', 'entropy'],
+  redox: ['electrochemistry'],
+  galvanic: ['electrochemistry'],
+  nernst: ['electrochemistry'],
+  kb: ['base'],
+  different: ['conflict'],
+  game: ['conflict'],
+  away: ['conflict'],
+  reschedule: ['conflict'],
+  switch: ['change'],
 }
 
 export function fold(s: string): string {
@@ -107,7 +128,10 @@ export function tokens(s: string): string[] {
 export function expand(ts: string[]): { t: string; w: number }[] {
   const seen = new Map<string, number>()
   for (const t of ts) seen.set(t, Math.max(seen.get(t) ?? 0, 1))
-  for (const t of ts) for (const s of SYNONYMS[t] ?? []) if (!seen.has(s)) seen.set(s, 0.35)
+  for (const t of ts) for (const raw of SYNONYMS[t] ?? []) {
+    const s = stem(raw)
+    if (!seen.has(s)) seen.set(s, 0.35)
+  }
   return [...seen].map(([t, w]) => ({ t, w }))
 }
 
@@ -115,6 +139,14 @@ export function expand(ts: string[]): { t: string; w: number }[] {
 export function numbers(s: string): string[] {
   const f = fold(s).replace(/\s*[x×]\s*10\^?\s*(-?\d+)/g, 'e$1')
   return (f.match(/\d+(?:\.\d+)?(?:e-?\d+)?/g) ?? []).filter((n) => n.length >= 2 || n.includes('.'))
+}
+
+/** Sentences, without breaking on decimals ("0.0821"), initials or units. */
+export function sentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?]["”’)]?)\s+(?=["“(]?[A-Z0-9ΔΔ])/)
+    .map((s) => s.trim())
+    .filter(Boolean)
 }
 
 /** Similarity of two short texts, 0–1, on content tokens. */
