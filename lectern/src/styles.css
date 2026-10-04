@@ -631,14 +631,23 @@ a:hover {
 }
 .toaster {
   position: fixed;
-  left: 50%;
+  right: 20px;
   bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-  transform: translateX(-50%);
   z-index: 70;
   display: grid;
   gap: 8px;
-  justify-items: center;
+  justify-items: end;
   pointer-events: none;
+}
+@media (max-width: 640px) {
+  .toaster {
+    right: auto;
+    left: 50%;
+    bottom: auto;
+    top: calc(56px + env(safe-area-inset-top, 0px));
+    transform: translateX(-50%);
+    justify-items: center;
+  }
 }
 .toast {
   padding: 8px 14px;
@@ -842,7 +851,7 @@ a:hover {
   margin-top: 10px;
 }
 .turn-meta {
-  flex: 1;
+  flex: 1 1 220px;
   min-width: 0;
   color: var(--text-2);
   font-size: 12px;
@@ -851,7 +860,9 @@ a:hover {
 .turn-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 2px;
+  margin-left: auto;
 }
 .turn-actions .btn {
   margin-right: 6px;
@@ -1261,5 +1272,26 @@ a:hover {
   }
   .mode-chip {
     height: 32px;
+  }
+}
+.student-id > div {
+  min-width: 0;
+}
+.student-approved {
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 560px) {
+  .student-top {
+    padding: 8px 12px;
+  }
+  .student-course .muted {
+    display: none;
+  }
+  .student-top-right .btn {
+    padding: 0 6px;
   }
 }

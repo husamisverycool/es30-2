@@ -1,0 +1,8 @@
+# Deploy from Git: Netlify builds the Lectern app in lectern/ and serves the single-file build.
+[build]
+  base = "lectern"
+  command = "npm ci && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"

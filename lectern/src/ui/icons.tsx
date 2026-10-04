@@ -216,6 +216,13 @@ export const IconBook = (p: P) => (
   </S>
 )
 
+export const IconLectern = (p: P) => (
+  <S {...p}>
+    <path d="M3.75 8.25 16.25 5.5v2.25L3.75 10.5z" />
+    <path d="M10 9.4v6.85M6.25 16.75h7.5" />
+  </S>
+)
+
 export const kindIcon: Record<string, (p: P) => JSX.Element> = {
   lecture: IconLecture,
   slides: IconSlides,

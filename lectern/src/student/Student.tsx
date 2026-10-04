@@ -5,7 +5,7 @@ import { classify } from '../engine/classify'
 import { Composer, TutorTurn, useChat, useSuggestions } from '../shared/Chat'
 import { SourceView } from '../shared/SourceView'
 import { citeText } from '../shared/Answer'
-import { IconThumb, IconBook, IconPause, IconCopy, kindIcon } from '../ui/icons'
+import { IconThumb, IconLectern, IconPause, IconCopy, kindIcon } from '../ui/icons'
 import { Panel, Status, toast, copyText, fmtDate } from '../ui/kit'
 import type { Source } from '../data/types'
 
@@ -69,7 +69,7 @@ export function Student() {
       <header class="student-top">
         <div class="student-id">
           <span class="student-mark" aria-hidden="true">
-            <IconBook size={18} />
+            <IconLectern size={18} />
           </span>
           <div>
             <div class="student-course">
@@ -178,7 +178,7 @@ export function Student() {
             }
           />
           <p class="student-foot">
-            Answers use only {prof.short}’s approved materials · Course staff can see your questions · The tutor can be wrong, so check the source
+            Answers use only {prof.short}’s approved materials · Course staff can see your questions · The tutor can be wrong, so check the source · Built with Lectern
           </p>
         </div>
       </div>

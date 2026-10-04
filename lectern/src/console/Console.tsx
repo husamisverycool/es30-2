@@ -2,7 +2,7 @@ import type { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
 import { course, prof, reviewProgress } from '../app/context'
 import { isLive, resetAll, update, useStore, type State } from '../state/store'
-import { IconBook, IconChevron, IconArrowOut, IconMore, IconX } from '../ui/icons'
+import { IconLectern, IconChevron, IconArrowOut, IconMore, IconX } from '../ui/icons'
 import { Button, Dialog, Status, Switch, cx, fmtTime, fmtDay, toast } from '../ui/kit'
 import { STUDENT_URL } from '../app/config'
 import { Overview } from './Overview'
@@ -52,7 +52,7 @@ export function setLive(on: boolean, s: State) {
 }
 
 /** The one global control: words first, then the switch. Turning off is instant; turning on asks once. */
-export function TutorSwitch({ compact }: { compact?: boolean }) {
+export function TutorSwitch({ compact, id = 'live-switch' }: { compact?: boolean; id?: string }) {
   const s = useStore()
   const [confirm, setConfirm] = useState(false)
   const live = isLive(s)
@@ -73,7 +73,7 @@ export function TutorSwitch({ compact }: { compact?: boolean }) {
         )}
       </div>
       <Switch
-        id={compact ? 'live-switch-top' : 'live-switch'}
+        id={id}
         size="lg"
         checked={s.live}
         label={s.live ? 'Turn the tutor off' : 'Turn the tutor on'}
@@ -128,19 +128,20 @@ export function Console({ page }: { page: Page }) {
 
   const nav = (
     <nav class="sidebar" aria-label="Lectern">
-      <div class="sidebar-course">
-        <span class="course-mark" aria-hidden="true">
-          <IconBook size={16} />
+      <div class="sidebar-brand">
+        <span class="brand-mark" aria-hidden="true">
+          <IconLectern size={16} />
         </span>
-        <div class="sidebar-course-text">
-          <div class="sidebar-course-code">
-            {course.code} <span class="muted">· {course.term}</span>
-          </div>
-          <div class="sidebar-course-title">{course.title}</div>
-        </div>
+        <span class="brand-name">Lectern</span>
         <button type="button" class="icon-btn sidebar-close" aria-label="Close menu" onClick={() => setMenu(false)}>
           <IconX size={16} />
         </button>
+      </div>
+      <div class="sidebar-course">
+        <div class="sidebar-course-code">
+          {course.code} <span class="muted">· {course.term}</span>
+        </div>
+        <div class="sidebar-course-title">{course.title}</div>
       </div>
       <ul class="nav-list">
         {PAGES.map((x) => (

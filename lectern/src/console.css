@@ -14,24 +14,35 @@
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border-subtle);
 }
-.sidebar-course {
+.sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 8px 14px;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  margin-bottom: 10px;
 }
-.course-mark {
+.brand-mark {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   flex: none;
   border-radius: var(--r-sm);
   background: var(--primary-bg);
   color: var(--primary-fg);
 }
-.sidebar-course-text {
+.brand-name {
   flex: 1;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.sidebar-course {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--bg);
+  box-shadow: var(--hairline);
   min-width: 0;
 }
 .sidebar-course-code {
@@ -512,6 +523,20 @@
   gap: 40px;
   align-items: start;
 }
+.steps-progress {
+  height: 4px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+  background: var(--bg-inset);
+  overflow: hidden;
+}
+.steps-progress span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--success);
+  transition: width var(--dur-toggle) var(--ease-move);
+}
 .steps {
   list-style: none;
   margin: 0;
@@ -583,8 +608,14 @@
   display: grid;
   gap: 14px;
 }
-.controls dt a {
+.control-link {
+  color: var(--text);
   font-weight: 500;
+}
+.control-link:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .controls dd {
   margin: 2px 0 0;
@@ -708,12 +739,12 @@
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
   gap: 24px;
-  align-items: start;
+  align-items: stretch;
+  height: calc(100dvh - 210px);
+  min-height: 520px;
 }
 .ed-list {
-  position: sticky;
-  top: 16px;
-  max-height: calc(100vh - 140px);
+  min-height: 0;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -772,20 +803,21 @@
   font-size: 12px;
 }
 .preview-chat {
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - 160px);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
+  overflow: hidden;
 }
 .preview-scroll {
   flex: 1;
+  min-height: 0;
   display: grid;
   align-content: start;
   gap: 24px;
   padding: 24px clamp(16px, 4vw, 40px);
   overflow-y: auto;
-  max-height: calc(100vh - 290px);
 }
 .preview-empty {
   display: grid;
@@ -1383,16 +1415,15 @@
   }
   .preview-grid {
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    min-height: 0;
   }
   .ed-list {
-    position: static;
     max-height: 280px;
   }
-  .preview-scroll {
-    max-height: none;
-  }
   .preview-chat {
-    min-height: 480px;
+    height: 70dvh;
+    min-height: 460px;
   }
 }
 @media (max-width: 900px) {

@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build && node scripts/to-artifact.mjs",
     "typecheck": "tsc --noEmit -p .",
-    "validate": "tsx scripts/validate-content.ts"
+    "validate": "tsx scripts/validate-content.ts",
+    "zip": "npm run build && node scripts/zip-netlify.mjs"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",

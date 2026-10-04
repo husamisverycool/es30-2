@@ -44,6 +44,16 @@ Open the console in one tab and the student view in another: switching the tutor
 | Course materials | **Fictional.** 13 lecture transcripts, 13 slide decks, a syllabus, PS4 solutions, PS5, a practice midterm, a rubric and Ed answers, all written for this demo in the persona's voice. |
 | Canvas, Panopto, Ed integration; real video playback; accounts | **Not built.** The 2a plan does this by hand for three pilot courses. |
 
+## Put it on Netlify
+
+**Fastest (about a minute):** go to https://app.netlify.com/drop and drag `lectern-netlify.zip` (at the repo root) onto the page. Netlify gives you a public link right away. The student view is the same link with `#student` at the end.
+
+**From Git:** connect this repo in Netlify. `netlify.toml` at the repo root already tells it to build `lectern/` and publish `lectern/dist`.
+
+To rebuild the zip after changes: `cd lectern && npm run zip`.
+
+On Netlify the tutor answers new questions by quoting the closest passages from the approved materials, because Claude-written answers need the Claude artifact viewer. The prepared answers, problem-set guard, staff routing, corrections, switch, log and everything else work the same. Two tabs in the same browser (console and `#student`) stay in sync.
+
 ## Run it
 
 ```bash

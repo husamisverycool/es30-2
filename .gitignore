@@ -2,3 +2,4 @@ node_modules/
 lectern/dist/
 .DS_Store
 lectern/.stub/
+lectern/netlify/

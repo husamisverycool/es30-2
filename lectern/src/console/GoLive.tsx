@@ -134,7 +134,7 @@ export function GoLive() {
       <PageHead title="Go live" sub="One switch for students, and one post to tell them about it. You can turn it off at any moment." />
 
       <section class="golive-switch" aria-label="Tutor status">
-        <TutorSwitch />
+        <TutorSwitch id="live-switch-page" />
         <div class="golive-explain">
           {live ? (
             <p>

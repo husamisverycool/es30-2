@@ -76,6 +76,9 @@ export function Overview() {
               {done} of 4 done
             </span>
           </div>
+          <div class="steps-progress" role="progressbar" aria-valuemin={0} aria-valuemax={4} aria-valuenow={done} aria-label="Setup progress">
+            <span style={{ width: `${(done / 4) * 100}%` }} />
+          </div>
           <ol class="steps">
             {steps.map((st, i) => (
               <li key={st.title} class={cx('step', st.done && 'is-done')}>
@@ -122,25 +125,25 @@ export function Overview() {
           <dl class="controls">
             <div>
               <dt>
-                <a href="#sources">You approve every source</a>
+                <a class="control-link" href="#sources">You approve every source</a>
               </dt>
               <dd>The tutor answers only from what you approve. {p.approved > 0 ? `${p.approved} of ${src.length} approved so far.` : 'Nothing is approved yet.'}</dd>
             </div>
             <div>
               <dt>
-                <a href="#questions">You see every question</a>
+                <a class="control-link" href="#questions">You see every question</a>
               </dt>
               <dd>Every question and answer is logged, grouped by topic, with student names hidden.</dd>
             </div>
             <div>
               <dt>
-                <a href="#rules">It won’t solve problem sets</a>
+                <a class="control-link" href="#rules">It won’t solve problem sets</a>
               </dt>
               <dd>It explains ideas and points to your lectures. It never works or checks problem-set questions.</dd>
             </div>
             <div>
               <dt>
-                <a href="#golive">The off switch is yours</a>
+                <a class="control-link" href="#golive">The off switch is yours</a>
               </dt>
               <dd>Turn it off at any moment and it stops answering immediately.</dd>
             </div>
