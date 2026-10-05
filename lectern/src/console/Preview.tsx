@@ -252,12 +252,15 @@ export function Preview() {
         title="Preview"
         sub="Ask what your students ask. Nothing you try here reaches students or the question log."
         actions={
-          <Button variant="secondary" disabled={chat.busy || queue.length > 0} onClick={() => setQueue(course.testQuestions.map((q) => q.text).filter((q) => !asked.has(questionKey(q))))}>
-            Ask all {course.testQuestions.length}
-          </Button>
+          course.testQuestions.length > 0 && (
+            <Button variant="secondary" disabled={chat.busy || queue.length > 0} onClick={() => setQueue(course.testQuestions.map((q) => q.text).filter((q) => !asked.has(questionKey(q))))}>
+              Ask all {course.testQuestions.length}
+            </Button>
+          )
         }
       />
-      <div class="preview-grid">
+      <div class={cx('preview-grid', course.testQuestions.length === 0 && 'is-single')}>
+        {course.testQuestions.length > 0 && (
         <aside class="ed-list" aria-label="Questions from your Ed history">
           <div class="ed-list-head">
             <h2 class="section-title">From your Ed history</h2>
@@ -289,14 +292,15 @@ export function Preview() {
             })}
           </ul>
         </aside>
+        )}
         <section class="preview-chat" aria-label="Test conversation">
           <div class="preview-scroll" ref={listRef}>
             {chat.turns.length === 0 ? (
               <div class="preview-empty">
                 <h2 class="section-title">Ask it anything a student would</h2>
                 <p class="muted">
-                  Pick a question from your Ed history, or type your own. Try asking for a problem-set answer to see how it declines. Each answer shows where it came
-                  from, and you can rewrite any answer in your own words.
+                  {course.testQuestions.length > 0 ? 'Pick a question from your Ed history, or type your own.' : 'Type a question a student asked you this week.'} Try asking for a
+                  problem-set answer to see how it declines. Each answer shows where it came from, and you can rewrite any answer in your own words.
                 </p>
               </div>
             ) : (

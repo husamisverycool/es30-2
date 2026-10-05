@@ -1,36 +1,70 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
-import { course, prof, reviewProgress } from '../app/context'
+import { course, prof, reviewProgress, isDemo, allSources, statusOf, workspace } from '../app/context'
+import { getState } from '../state/store'
 import { inPause, isLive, update, useStore } from '../state/store'
 import { parse, type Inline } from '../lib/md'
-import { IconCopy, IconMegaphone, IconCheck, IconClock } from '../ui/icons'
-import { Button, Status, copyText, fmtDay, fmtTime, toast, cx } from '../ui/kit'
+import { IconCopy, IconMegaphone, IconCheck, IconClock, IconDownload } from '../ui/icons'
+import { Button, Status, copyText, fmtDay, fmtTime, toast, cx, plural } from '../ui/kit'
 import { PageHead, TutorSwitch } from './Console'
-import { STUDENT_URL } from '../app/config'
+import { STUDENT_URL, inArtifact } from '../app/config'
+import { canPublish, fileBase, saveFile, studentPage, zipOne } from '../state/publish'
 
 const MIDTERM = { label: 'during Midterm 1', from: '2026-10-14T19:00:00-04:00', to: '2026-10-14T22:00:00-04:00' }
 
+/** What the tutor was built from, in the professor's words, from the sources she approved. */
+function materialsPhrase() {
+  const s = getState()
+  const kinds = new Set(allSources(s).filter((x) => statusOf(s, x) === 'approved' && x.mode === 'answer').map((x) => x.kind))
+  const parts: string[] = []
+  if (kinds.has('lecture')) parts.push('the lecture recordings')
+  if (kinds.has('slides')) parts.push('slides')
+  if (kinds.has('syllabus')) parts.push('the syllabus')
+  if (kinds.has('exam')) parts.push(isDemo() ? 'the practice midterm' : 'the practice exams')
+  if (kinds.has('ed')) parts.push('my answers here on Ed')
+  if (kinds.has('upload') || kinds.has('pset')) parts.push('notes I added')
+  if (!parts.length) return 'the materials I approved'
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]
+}
+
 export function defaultAnnouncement() {
-  const link = STUDENT_URL || '[link to the tutor]'
+  const demo = isDemo()
+  const s = getState()
+  const approved = allSources(s).filter((x) => statusOf(s, x) === 'approved')
+  // The demo is hosted at this link; an own course reaches students through the downloaded page, wherever it's put.
+  const link = (demo && STUDENT_URL) || '[link to the tutor]'
+  const lectures = approved.filter((x) => x.kind === 'lecture').length
+  const hasExam = approved.some((x) => x.kind === 'exam')
+  const closing = demo
+    ? `Midterm 1 is Wednesday, October 14. The tutor has Lectures 1–13 and the practice exam.`
+    : lectures
+      ? `The tutor has the ${lectures} lecture${lectures === 1 ? '' : 's'} we’ve covered so far, and I’ll add new ones as we go.`
+      : `I’ll add new lectures as we go.`
+  const good = [
+    'Re-explaining something from lecture in a different way',
+    lectures || demo ? 'Finding where we covered a topic (it links to the lecture and the timestamp)' : 'Finding where we covered a topic (it links to the source)',
+    hasExam && (demo ? 'Working through the practice midterm' : 'Working through the practice exams'),
+  ].filter(Boolean)
+  const privacy = demo
+    ? `**Privacy:** The TFs and I can read the questions asked in the tutor, without your names. We'll use them to see where the class is stuck and to plan section and lecture.`
+    : `**Privacy:** The questions you ask stay on your own device. The TFs and I can't see them.`
   return {
-    title: `New: a ${course.code} tutor built from our lectures`,
+    title: demo ? `New: a ${course.code} tutor built from our lectures` : `New: a study tutor for ${course.code}, built from our ${lectures ? 'lectures' : 'course materials'}`,
     body: `Hi everyone,
 
-Starting today you can use a study tutor built only from our course materials: the lecture recordings, slides, syllabus, the practice midterm and my answers here on Ed. I chose and approved every source it uses.
+Starting today you can use a study tutor built only from our course materials: ${materialsPhrase()}. I chose and approved every source it uses.
 
 **Where to find it:** ${link}
 
 **What it's good for:**
-- Re-explaining something from lecture in a different way
-- Finding where we covered a topic (it links to the lecture and the timestamp)
-- Working through the practice midterm
+${good.map((g) => `- ${g}`).join('\n')}
 
 **What it won't do:** It won't solve or check problem set questions. If you ask, it will say so and help with the idea behind the problem instead. Problem sets are still yours to work through under the collaboration policy in the syllabus.
 
-**Privacy:** The TFs and I can read the questions asked in the tutor, without your names. We'll use them to see where the class is stuck and to plan section and lecture.
+${privacy}
 
 Ed, section and office hours aren't going anywhere. If the tutor's answer doesn't match what you heard in lecture, trust lecture and post here.
 
-Midterm 1 is Wednesday, October 14. The tutor has Lectures 1–13 and the practice exam.
+${closing}
 
 Best,
 ${prof.short}`,
@@ -115,7 +149,7 @@ export function GoLive() {
   }, [title, body])
 
   const warnings: { text: string; href: string; cta: string }[] = []
-  if (p.pending > 0) warnings.push({ text: `${p.pending} sources still need review. They stay out until you approve them.`, href: '#sources', cta: 'Review' })
+  if (p.pending > 0) warnings.push({ text: `${plural(p.pending, 'source')} still ${p.pending === 1 ? 'needs' : 'need'} review. ${p.pending === 1 ? 'It stays' : 'They stay'} out until you approve ${p.pending === 1 ? 'it' : 'them'}.`, href: '#sources', cta: 'Review' })
   if (!s.rulesConfirmedAt) warnings.push({ text: 'You haven’t confirmed the rules yet.', href: '#rules', cta: 'Check rules' })
   if (s.previewCount < 3) warnings.push({ text: 'Try a few questions first, so nothing it says surprises you.', href: '#preview', cta: 'Preview' })
 
@@ -182,9 +216,15 @@ export function GoLive() {
             <Button variant="secondary" onClick={() => setPause(new Date(), new Date(Date.now() + 3600_000), 'for an hour')}>
               Pause for an hour
             </Button>
-            <Button variant="secondary" onClick={() => setPause(new Date(MIDTERM.from), new Date(MIDTERM.to), MIDTERM.label)}>
-              Pause during Midterm 1 · Wed Oct 14, 7–10 pm
-            </Button>
+            {isDemo() ? (
+              <Button variant="secondary" onClick={() => setPause(new Date(MIDTERM.from), new Date(MIDTERM.to), MIDTERM.label)}>
+                Pause during Midterm 1 · Wed Oct 14, 7–10 pm
+              </Button>
+            ) : (
+              <Button variant="secondary" onClick={() => setPause(new Date(), new Date(Date.now() + 24 * 3600_000), 'for 24 hours')}>
+                Pause for 24 hours
+              </Button>
+            )}
           </div>
         )}
       </section>
@@ -276,25 +316,90 @@ export function GoLive() {
         <h2 id="link-title" class="section-title">
           Link for students
         </h2>
-        {STUDENT_URL ? (
-          <div class="link-row">
-            <code class="link-code">{STUDENT_URL}</code>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={<IconCopy size={15} />}
-              onClick={async () => toast((await copyText(STUDENT_URL)) ? 'Link copied' : 'Select the link and copy it')}
-            >
-              Copy link
-            </Button>
-          </div>
+        {isDemo() ? (
+          STUDENT_URL ? (
+            <div class="link-row">
+              <code class="link-code">{STUDENT_URL}</code>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<IconCopy size={15} />}
+                onClick={async () => toast((await copyText(STUDENT_URL)) ? 'Link copied' : 'Select the link and copy it')}
+              >
+                Copy link
+              </Button>
+            </div>
+          ) : (
+            <p class="muted">The student link appears here once the tutor is published.</p>
+          )
         ) : (
-          <p class="muted">The student link appears here once the tutor is published.</p>
+          <PublishBox />
         )}
         <p class="muted small">
           Students see the tutor only. They can’t see this console, your sources list or other students’ questions. <a href="#student">See what they see.</a>
         </p>
       </section>
     </>
+  )
+}
+
+/** An own course has no server behind it yet, so students get a downloaded copy of the tutor. */
+function PublishBox() {
+  const s = useStore()
+  const meta = workspace.mine
+  const approved = allSources(s).filter((x) => statusOf(s, x) === 'approved').length
+  if (!meta) return null
+  const download = (as: 'zip' | 'html') => {
+    try {
+      const html = studentPage(meta, s)
+      const base = fileBase(meta)
+      if (as === 'zip') saveFile(`${base}.zip`, zipOne('index.html', html))
+      else saveFile(`${base}.html`, new Blob([html], { type: 'text/html' }))
+      update(() => {}, { kind: 'published-page', detail: `Downloaded the student page with ${approved} source${approved === 1 ? '' : 's'}` })
+      toast(as === 'zip' ? 'Downloaded. Drag the .zip onto Netlify Drop for a link.' : 'Downloaded. Upload the file where students can open it.')
+    } catch (e) {
+      toast((e as Error).message)
+    }
+  }
+  if (inArtifact)
+    return (
+      <p class="muted">
+        Your course is saved in this browser. To give students their own copy, open Lectern from its Netlify link and download the student page from this section.
+      </p>
+    )
+  return (
+    <div class="publish">
+      <p>
+        Your course is saved in this browser only, so a link to this page won’t show students your materials. Download the student page instead and put it
+        online. It carries the {approved} source{approved === 1 ? '' : 's'} you approved and your rules, and nothing you left out.
+      </p>
+      <div class="publish-actions">
+        <Button variant="primary" icon={<IconDownload size={16} />} disabled={!approved || !canPublish()} onClick={() => download('zip')}>
+          Download for Netlify
+        </Button>
+        <Button variant="secondary" disabled={!approved || !canPublish()} onClick={() => download('html')}>
+          Download as one .html file
+        </Button>
+      </div>
+      <ol class="publish-steps">
+        <li>
+          Drag the .zip onto{' '}
+          <a href="https://app.netlify.com/drop" target="_blank" rel="noopener">
+            app.netlify.com/drop
+          </a>
+          . Netlify gives you a public link in about a minute. Paste it into the announcement above.
+        </li>
+        <li>Or upload the .html file to Canvas Files and link to it from your course page.</li>
+      </ol>
+      <p class="muted small">
+        {!approved
+          ? 'Add and approve at least one source first. '
+          : !canPublish()
+            ? 'Downloading needs the built app (npm run build), not the dev server. '
+            : ''}
+        In this version the downloaded page runs on its own: questions asked there stay on each student’s device and don’t reach your Questions page, and the switch
+        here doesn’t reach it. To take it down, delete the Netlify site or the file. Download again after you change sources or rules.
+      </p>
+    </div>
   )
 }

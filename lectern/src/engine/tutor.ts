@@ -4,8 +4,12 @@ import { asksExamContent, isLogistics, matchPset } from './guard'
 import { expand, fold, overlap, sentences, tokens } from './text'
 import { ruleOn } from './rules'
 import { disableSample, getSample, PERMANENT, type SampleError } from './claude'
+import { getApiKey, streamAnswer, type ApiError } from './anthropic'
 
 export type Method = 'prepared' | 'corrected' | 'claude' | 'quoted' | 'guard'
+
+/** The last API failure, so Settings can say why answers fell back to quotes. */
+export let lastApiError = ''
 
 export interface TutorResult {
   answer: Answer
@@ -237,10 +241,21 @@ export function bestQuote(hits: Hit[], query: string, index: Index, sources: Sou
   return best
 }
 
+// Deadlines, dates and places are syllabus facts: quote the syllabus first when it has the answer.
+const COURSE_FACT =
+  /\b(due|deadline|office hours?|late (work|policy|penalty|submissions?)|what time|where (is|are) (the )?(lecture|section|office|exam|midterm|final)|when (is|are) (the )?(midterm|final|exam|quiz|section|office hours|problem sets?|psets?|homework|lecture))\b/
+
 function quoted(question: string, all: Hit[], index: Index, ctx: TutorContext): TutorResult {
   const hits = all.filter((h) => !(h.source.kind === 'syllabus' && /\bAI\b|collab/i.test(h.passage.loc))).concat()
   if (!hits.length) hits.push(...all)
-  const main = bestQuote(hits, question, index, ctx.sources, 3)
+  let syllabusHits: Hit[] = []
+  if (COURSE_FACT.test(fold(question))) {
+    const isSyl = (h: Hit) => h.source.kind === 'syllabus' && !/\bAI\b|collab/i.test(h.passage.loc)
+    syllabusHits = hits.filter(isSyl)
+    // Lectures mention deadlines in passing; look further down for the syllabus section that states them.
+    if (!syllabusHits.length) syllabusHits = index.search(question, 30).filter(isSyl)
+  }
+  const main = syllabusHits.length ? bestQuote(syllabusHits, question, index, ctx.sources, 2) : bestQuote(hits, question, index, ctx.sources, 3)
   // Course policy passages are for policy questions, not a second quote on chemistry.
   const policy = (h: Hit) => h.source.kind === 'syllabus' && /\bAI\b|collab/i.test(h.passage.loc)
   const rest = hits.filter((h) => h.source.id !== main.hit.source.id && !policy(h))
@@ -250,7 +265,8 @@ function quoted(question: string, all: Hit[], index: Index, ctx: TutorContext): 
   if (second && second.v > main.v * 0.4) {
     lines.push(`It also comes up in **${citeLabel(second.hit.source, second.hit.passage)}**: “${second.text}” ${second.ids.map((id) => `[[${id}]]`).join(' ')}`)
   }
-  return { answer: { outcome: 'answered', body: lines.join('\n\n') }, method: 'quoted', read: all }
+  const read = all.some((h) => h.passage.id === main.hit.passage.id) ? all : [main.hit, ...all]
+  return { answer: { outcome: 'answered', body: lines.join('\n\n') }, method: 'quoted', read }
 }
 
 interface Upcoming {
@@ -402,9 +418,34 @@ export async function ask(question: string, ctx: TutorContext, opts: AskOptions 
   if (ahead) return notCovered(ctx, hits, ahead)
 
   // 4. Claude writes from those passages when this viewer can use it; otherwise quote them.
-  const sample = await getSample()
-  if (!sample) return quoted(question, hits, index, ctx)
   const allowed = new Set(hits.map((h) => h.passage.id))
+  const sample = await getSample()
+  if (!sample) {
+    // Outside the Claude viewer: use the founder's API key if one is set in Settings.
+    if (!getApiKey()) return quoted(question, hits, index, ctx)
+    let outcome: Outcome | null = null
+    try {
+      const text = await streamAnswer(buildPrompt(question, hits, ctx, opts.history), {
+        signal: opts.signal,
+        onText: (t) => {
+          const s = splitOutcome(t)
+          outcome = s.outcome ?? outcome
+          if (s.body) opts.onText?.(cleanCitations(s.body, allowed))
+        },
+      })
+      const s = splitOutcome(text)
+      return { answer: { outcome: s.outcome ?? outcome ?? 'answered', body: cleanCitations(s.body, allowed) }, method: 'claude', read: hits }
+    } catch (err) {
+      const e = err as ApiError
+      if (e.code === 'cancelled') throw { code: 'cancelled' }
+      if (e.text) {
+        const s = splitOutcome(e.text)
+        if (s.body) return { answer: { outcome: s.outcome ?? 'answered', body: cleanCitations(s.body, allowed) }, method: 'claude', read: hits, interrupted: true }
+      }
+      lastApiError = e.message
+      return quoted(question, hits, index, ctx)
+    }
+  }
   try {
     let outcome: Outcome | null = null
     const { text } = await sample(buildPrompt(question, hits, ctx, opts.history), {

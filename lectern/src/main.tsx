@@ -6,10 +6,13 @@ import { Console, type Page } from './console/Console'
 import { Student } from './student/Student'
 import { Toaster } from './ui/kit'
 import { logActivityOnce } from './state/store'
+import { course } from './app/context'
+import { published } from './state/publish'
 
-const PAGES: Page[] = ['overview', 'sources', 'rules', 'preview', 'questions', 'golive']
+const PAGES: Page[] = ['overview', 'sources', 'rules', 'preview', 'questions', 'golive', 'experiment']
 
 function route(): Page | 'student' {
+  if (published) return 'student'
   const h = location.hash.replace('#', '')
   if (h === 'student') return 'student'
   return (PAGES as string[]).includes(h) ? (h as Page) : 'overview'
@@ -23,10 +26,10 @@ function App() {
     return () => window.removeEventListener('hashchange', on)
   }, [])
   useEffect(() => {
-    if (r !== 'student') logActivityOnce('opened', 'Opened the console for the first time')
+    if (r !== 'student' && !published) logActivityOnce('opened', 'Opened the console for the first time')
   }, [r === 'student'])
   useEffect(() => {
-    document.title = r === 'student' ? 'CHEM 11 Tutor' : 'Lectern'
+    document.title = r === 'student' ? `${course.code} Tutor` : 'Lectern'
   }, [r === 'student'])
   return (
     <>

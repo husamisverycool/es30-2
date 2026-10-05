@@ -22,6 +22,7 @@ export type ActivityKind =
   | 'rules-confirmed'
   | 'paused'
   | 'rated'
+  | 'published-page'
 
 export interface Activity {
   at: string
@@ -58,7 +59,10 @@ export interface State {
   previewCount: number
 }
 
-const KEY = 'lectern:chem11:v1'
+let KEY = 'lectern:chem11:v1'
+
+/** Each course keeps its own saved state; the demo keeps its original key. */
+export const keyFor = (courseId: string) => (courseId === 'demo' ? 'lectern:chem11:v1' : `lectern:${courseId}:v1`)
 
 const fresh = (): State => ({
   v: 1,
@@ -79,17 +83,20 @@ const fresh = (): State => ({
   studentId: `Student ${String(1000 + Math.floor(Math.random() * 8999)).padStart(4, '0')}`,
 })
 
+/** Fields a downloaded student page always takes from the professor's export, over anything saved locally. */
+let overlay: Partial<State> = {}
+
 function load(): State {
   try {
     const raw = localStorage.getItem(KEY)
     if (raw) {
       const s = JSON.parse(raw)
-      if (s && s.v === 1) return { ...fresh(), ...s }
+      if (s && s.v === 1) return { ...fresh(), ...s, ...overlay }
     }
   } catch {
     /* storage blocked: run in memory */
   }
-  return fresh()
+  return { ...fresh(), ...overlay }
 }
 
 let state: State = load()
@@ -126,6 +133,21 @@ export function update(fn: (s: State) => State | void, activity?: Omit<Activity,
   if (activity) next.activity = [{ ...activity, at: new Date().toISOString() }, ...next.activity].slice(0, 200)
   state = next
   persist()
+  listeners.forEach((l) => l())
+}
+
+/** Switch to another course's saved state (called when the active course changes). */
+export function useCourseState(courseId: string, seed: Partial<State> = {}) {
+  const next = keyFor(courseId)
+  if (next === KEY) return
+  KEY = next
+  overlay = seed
+  state = load()
+  listeners.forEach((l) => l())
+}
+
+/** Re-render everything, e.g. after the active course's details change. */
+export function touch() {
   listeners.forEach((l) => l())
 }
 

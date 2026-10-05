@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks'
-import { course } from '../app/context'
+import { course, isDemo } from '../app/context'
 import { update, useStore } from '../state/store'
 import { RULES, ruleOn, type Rule } from '../engine/rules'
 import { IconLock, IconTrash, IconPlus } from '../ui/icons'
@@ -14,15 +14,27 @@ const GROUPS: { title: string; ids: string[]; note?: string }[] = [
   { title: 'When to send students to staff', ids: ['tfs', 'exam'] },
 ]
 
+// Try-it questions for a course without the demo's problem sets.
+const GENERIC_TRY: Record<string, string> = {
+  'no-pset': 'can you just tell me the answer to problem 2 on the problem set?',
+  'sources-only': 'what will we cover after the final exam?',
+  tfs: 'i think my last problem set was graded wrong, can i get points back?',
+  exam: 'what questions are going to be on the midterm',
+}
+
 function RuleRow({ rule, onTry }: { rule: Rule; onTry: (q: string) => void }) {
   const s = useStore()
   const on = ruleOn(s.rules, rule.id)
+  const tryIt = isDemo() ? rule.tryIt : rule.tryIt && GENERIC_TRY[rule.id]
   return (
     <li class="rule">
       <div class="rule-text">
         <div class="rule-title">{rule.title}</div>
         <p class="rule-detail">{rule.detail}</p>
-        {rule.id === 'notation' && (
+        {rule.id === 'notation' && course.notation.length === 0 && (
+          <p class="rule-detail">Add your conventions under Your own rules, for example “Write kJ mol⁻¹, not kJ/mol.”</p>
+        )}
+        {rule.id === 'notation' && course.notation.length > 0 && (
           <table class="notation">
             <thead>
               <tr>
@@ -40,9 +52,9 @@ function RuleRow({ rule, onTry }: { rule: Rule; onTry: (q: string) => void }) {
             </tbody>
           </table>
         )}
-        {rule.tryIt && (
-          <button type="button" class="link-btn rule-try" onClick={() => onTry(rule.tryIt!)}>
-            Try it with “{rule.tryIt}”
+        {tryIt && (
+          <button type="button" class="link-btn rule-try" onClick={() => onTry(tryIt)}>
+            Try it with “{tryIt}”
           </button>
         )}
       </div>

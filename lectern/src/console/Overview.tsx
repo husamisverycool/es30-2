@@ -1,4 +1,4 @@
-import { course, prof, reviewProgress, allSources } from '../app/context'
+import { course, reviewProgress, allSources, isDemo, statusOf } from '../app/context'
 import { isLive, useStore } from '../state/store'
 import { RULES } from '../engine/rules'
 import { IconCheck } from '../ui/icons'
@@ -20,8 +20,25 @@ export function Overview() {
   const first = lectures[0]?.date
   const last = lectures[lectures.length - 1]?.date
 
+  const demo = isDemo()
+  const has = (k: string) => src.some((x) => x.kind === k && statusOf(s, x) === 'approved')
+  const toAdd = [
+    { label: 'Your syllabus', hint: 'PDF or text. Its schedule tells the tutor what hasn’t been taught yet.', done: has('syllabus') },
+    { label: 'Lecture captions', hint: 'The .vtt or .srt file from Panopto, Zoom or Canvas Studio, so answers link to the minute.', done: has('lecture') },
+    { label: 'Slides or notes', hint: 'PDF slides or a handout.', done: has('slides') || has('upload') },
+    { label: 'The current problem set', hint: 'Marked “recognize only”: used to spot its questions and decline them, never quoted.', done: has('pset') },
+  ]
   const steps = [
-    {
+    !demo
+      ? {
+          title: 'Add your materials',
+          detail: p.approved ? `${p.approved} source${p.approved === 1 ? '' : 's'} added` : 'Your syllabus and a few lectures to start',
+          time: 'About 5 minutes',
+          done: p.approved >= 2,
+          href: '#sources',
+          cta: p.approved ? 'Add more' : 'Add',
+        }
+      : {
       title: 'Review the sources',
       detail: p.pending === 0 ? `${p.approved} approved, ${p.total - p.approved} left out` : `${p.decided} of ${p.total} reviewed`,
       time: 'About 6 minutes',
@@ -39,7 +56,11 @@ export function Overview() {
     },
     {
       title: 'Ask it a few questions',
-      detail: s.previewCount ? `${s.previewCount} asked so far` : `${course.testQuestions.length} questions from your Ed history are ready to try`,
+      detail: s.previewCount
+        ? `${s.previewCount} asked so far`
+        : course.testQuestions.length
+          ? `${course.testQuestions.length} questions from your Ed history are ready to try`
+          : 'Ask what students asked you this week',
       time: 'About 5 minutes',
       done: s.previewCount >= 3,
       href: '#preview',
@@ -59,11 +80,13 @@ export function Overview() {
   return (
     <>
       <PageHead
-        title={done === 4 ? 'Your tutor is live' : 'Your tutor is ready for review'}
+        title={done === 4 ? 'Your tutor is live' : demo ? 'Your tutor is ready for review' : `Set up the ${course.code} tutor`}
         sub={
           done === 4
             ? `Students are using it. Their questions appear under Questions as they ask them.`
-            : `Lectern built it from what you already post on Canvas and Ed. Reviewing it takes about 15 minutes, and nothing reaches students until you turn it on.`
+            : demo
+              ? `Lectern built it from what you already post on Canvas and Ed. Reviewing it takes about 15 minutes, and nothing reaches students until you turn it on.`
+              : `Add the materials you already have, try a few questions, and turn it on when it sounds like you. Nothing reaches students until you do.`
         }
       />
       <div class="overview-grid">
@@ -99,7 +122,28 @@ export function Overview() {
             ))}
           </ol>
 
-          <h2 class="section-title ov-sub">Already done for you</h2>
+          {!demo && (
+            <>
+              <h2 class="section-title ov-sub">What to add</h2>
+              <ul class="add-list">
+                {toAdd.map((a) => (
+                  <li key={a.label} class={cx(a.done && 'is-done')}>
+                    <span class="add-check" aria-hidden="true">
+                      {a.done ? <IconCheck size={13} /> : null}
+                    </span>
+                    <span>
+                      <strong>{a.label}</strong> <span class="muted">{a.hint}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <a class="btn btn-secondary btn-sm add-cta" href="#sources">
+                Go to Sources
+              </a>
+            </>
+          )}
+          {demo && <h2 class="section-title ov-sub">Already done for you</h2>}
+          {demo && (
           <ul class="done-list">
             <li>
               Transcribed {lectures.length} lecture recordings from Canvas
@@ -118,6 +162,7 @@ export function Overview() {
             )}
             <li>Prepared answers to {course.testQuestions.length} questions from your Ed history, each tied to the passage it comes from.</li>
           </ul>
+          )}
         </section>
 
         <aside class="ov-side">
@@ -164,9 +209,11 @@ export function Overview() {
               ))}
             </ul>
           )}
-          <p class="ov-contact muted small">
-            Questions about the setup? Reply to the email you got from Lectern, or ask in your review meeting.
-          </p>
+          {demo && (
+            <p class="ov-contact muted small">
+              Questions about the setup? Reply to the email you got from Lectern, or ask in your review meeting.
+            </p>
+          )}
         </aside>
       </div>
     </>

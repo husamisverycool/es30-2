@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'preact/hooks'
-import { course } from '../app/context'
+import { course, isDemo } from '../app/context'
 import type { LogEntry, Outcome } from '../data/types'
 import { update, useStore, type LiveEntry } from '../state/store'
 import { outcomeLabel, questionKey, type TutorResult } from '../engine/tutor'
@@ -8,7 +8,7 @@ import { AnswerBody } from '../shared/Answer'
 import { SourceView } from '../shared/SourceView'
 import { allSources } from '../app/context'
 import { IconFlag, IconPencil, IconSearch } from '../ui/icons'
-import { Button, Panel, Status, Switch, cx, fmtDay, fmtTime } from '../ui/kit'
+import { Button, Panel, Status, Switch, cx, fmtDay, fmtTime, plural } from '../ui/kit'
 import { PageHead } from './Console'
 import { CorrectionPanel } from './Preview'
 
@@ -26,7 +26,7 @@ const dayKey = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { time
 function outcomeSentence(count: (o: Outcome) => number) {
   const parts = [
     [count('answered'), 'answered from your materials'],
-    [count('declined_pset'), 'problem-set requests declined'],
+    [count('declined_pset'), count('declined_pset') === 1 ? 'problem-set request declined' : 'problem-set requests declined'],
     [count('sent_to_tfs'), 'sent to the TFs'],
     [count('not_covered'), 'not covered by anything you approved'],
   ]
@@ -212,14 +212,16 @@ export function Questions() {
         title="Questions"
         sub="Every question students ask, with the answer they got. Student names are hidden; each student has a number."
         actions={
+          course.sampleLog.length > 0 && (
           <label class="sample-toggle">
             <Switch id="sample-switch" checked={s.showSample} label="Show the sample week" onChange={(v) => update((st) => void (st.showSample = v))} />
             <span>Sample week</span>
           </label>
+          )
         }
       />
 
-      {s.showSample && (
+      {s.showSample && course.sampleLog.length > 0 && (
         <p class="sample-note">
           The sample week shows what one week looks like with {course.enrolled} students: example questions written for this demo, answered from your materials. Questions
           asked in the student view appear above them, marked <span class="badge badge-info">New</span>.
@@ -230,8 +232,8 @@ export function Questions() {
         <div class="empty">
           <h2 class="section-title">No questions yet</h2>
           <p class="muted">
-            When students use the tutor, every question appears here with the answer it gave. Open the student view and ask something to see it arrive, or turn on the
-            sample week.
+            When students use the tutor, every question appears here with the answer it gave. Open the student view and ask something to see it arrive
+            {course.sampleLog.length > 0 ? ', or turn on the sample week.' : '.'}
           </p>
           <a class="btn btn-secondary" href="#student">
             Open the student view
@@ -244,7 +246,8 @@ export function Questions() {
               This week in your tutor
             </h2>
             <p class="digest-lede">
-              <strong class="tnum">{entries.length}</strong> questions from <strong class="tnum">{students}</strong> students, {rangeText}. {outcomeSentence(count)}
+              <strong class="tnum">{entries.length}</strong> {entries.length === 1 ? 'question' : 'questions'} from <strong class="tnum">{students}</strong>{' '}
+              {students === 1 ? 'student' : 'students'}, {rangeText}. {outcomeSentence(count)}
             </p>
             {reps.length > 0 && (
               <div class="digest-top">
@@ -296,7 +299,7 @@ export function Questions() {
                 <h2 id="days-title" class="section-title">
                   Questions per day
                 </h2>
-                <span class="muted small">Problem sets are due Fridays at 11:59 pm</span>
+                {isDemo() && <span class="muted small">Problem sets are due Fridays at 11:59 pm</span>}
               </div>
               <DayChart days={days} />
             </section>
@@ -427,7 +430,7 @@ export function Questions() {
         )}
       </Panel>
 
-      <Panel open={!!cluster} onClose={() => setCluster(null)} width={560} title={cluster ?? ''} sub={cluster ? `${topics.find((t) => t.topic === cluster)?.n ?? 0} questions` : undefined}>
+      <Panel open={!!cluster} onClose={() => setCluster(null)} width={560} title={cluster ?? ''} sub={cluster ? plural(topics.find((t) => t.topic === cluster)?.n ?? 0, 'question') : undefined}>
         <ul class="cluster-list">
           {topics
             .find((t) => t.topic === cluster)

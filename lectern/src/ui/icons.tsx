@@ -68,6 +68,12 @@ export const IconUpload = (p: P) => (
     <path d="M3.5 12.5v2.75a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5V12.5" />
   </S>
 )
+export const IconDownload = (p: P) => (
+  <S {...p}>
+    <path d="M10 3.5V13M6.5 9.5 10 13l3.5-3.5" />
+    <path d="M3.5 12.5v2.75a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5V12.5" />
+  </S>
+)
 export const IconCheck = (p: P) => (
   <S {...p}>
     <path d="m4.5 10.5 3.5 3.5 7.5-8" />

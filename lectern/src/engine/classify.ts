@@ -3,6 +3,10 @@ import { tokens } from './text'
 
 let model: { topic: string; tf: Map<string, number>; total: number }[] | null = null
 
+export function resetClassifier() {
+  model = null
+}
+
 /** Topic of a new question, learned from the labelled questions shipped with the course. */
 export function classify(question: string, course: Course): string {
   if (!model) {

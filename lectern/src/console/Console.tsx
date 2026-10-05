@@ -1,9 +1,9 @@
 import type { ComponentChildren } from 'preact'
-import { useEffect, useState } from 'preact/hooks'
-import { course, prof, reviewProgress } from '../app/context'
-import { isLive, resetAll, update, useStore, type State } from '../state/store'
-import { IconLectern, IconChevron, IconArrowOut, IconMore, IconX } from '../ui/icons'
-import { Button, Dialog, Status, Switch, cx, fmtTime, fmtDay, toast } from '../ui/kit'
+import { useEffect, useRef, useState } from 'preact/hooks'
+import { course, prof, reviewProgress, isDemo, workspace, setWorkspace } from '../app/context'
+import { isLive, update, useStore, type State } from '../state/store'
+import { IconLectern, IconChevron, IconArrowOut, IconMore, IconX, IconCheck, IconPlus } from '../ui/icons'
+import { Button, Dialog, Popover, Status, Switch, cx, fmtTime, fmtDay, plural, toast } from '../ui/kit'
 import { STUDENT_URL } from '../app/config'
 import { Overview } from './Overview'
 import { Sources } from './Sources'
@@ -11,8 +11,21 @@ import { Rules } from './Rules'
 import { Preview } from './Preview'
 import { Questions } from './Questions'
 import { GoLive } from './GoLive'
+import { Experiment } from './Experiment'
+import { CourseForm, SettingsPanel } from './Settings'
 
-export type Page = 'overview' | 'sources' | 'rules' | 'preview' | 'questions' | 'golive'
+export type Page = 'overview' | 'sources' | 'rules' | 'preview' | 'questions' | 'golive' | 'experiment'
+
+const STRIP_KEY = 'lectern:strip-hidden'
+
+const studentsPhrase = () => (course.enrolled ? plural(course.enrolled, 'student') : 'your students')
+const stripHidden = () => {
+  try {
+    return localStorage.getItem(STRIP_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 export const go = (p: Page | 'student') => {
   location.hash = p
@@ -35,7 +48,7 @@ export function setLive(on: boolean, s: State) {
         st.liveSince = new Date().toISOString()
         st.pause = undefined
       },
-      { kind: 'live-on', detail: `Turned the tutor on for ${course.enrolled} students` },
+      { kind: 'live-on', detail: `Turned the tutor on for ${studentsPhrase()}` },
     )
     toast('Tutor is on for students')
   } else {
@@ -65,7 +78,7 @@ export function TutorSwitch({ compact, id = 'live-switch' }: { compact?: boolean
         {!compact && (
           <span class="tutor-switch-sub">
             {live
-              ? `Open to ${course.enrolled} students`
+              ? `Open to ${studentsPhrase()}`
               : paused
                 ? `Until ${fmtDay(s.pause!.to)}, ${fmtTime(s.pause!.to)}`
                 : 'Students see a paused notice'}
@@ -82,7 +95,7 @@ export function TutorSwitch({ compact, id = 'live-switch' }: { compact?: boolean
       <Dialog
         open={confirm}
         onClose={() => setConfirm(false)}
-        title={`Turn on the tutor for ${course.enrolled} students?`}
+        title={`Turn on the tutor for ${studentsPhrase()}?`}
         actions={
           <>
             <Button variant="secondary" onClick={() => setConfirm(false)}>
@@ -101,7 +114,7 @@ export function TutorSwitch({ compact, id = 'live-switch' }: { compact?: boolean
         }
       >
         <p>
-          Students with the link can ask questions right away. It will use the {p.approved} sources you approved
+          Students with the link can ask questions right away. It will use the {plural(p.approved, 'source')} you approved
           {p.pending > 0 ? `; the ${p.pending} you haven’t reviewed stay out` : ''}.
         </p>
         <p>You can turn it off here at any moment, and it stops answering immediately.</p>
@@ -113,10 +126,19 @@ export function TutorSwitch({ compact, id = 'live-switch' }: { compact?: boolean
 export function Console({ page }: { page: Page }) {
   const s = useStore()
   const [menu, setMenu] = useState(false)
-  const [reset, setReset] = useState(false)
+  const [settings, setSettings] = useState(false)
+  const [courseForm, setCourseForm] = useState<'create' | 'edit' | null>(null)
+  const [switcher, setSwitcher] = useState(false)
+  const [strip, setStrip] = useState(!stripHidden())
+  const switchRef = useRef<HTMLButtonElement>(null)
   const p = reviewProgress(s)
   const live = isLive(s)
   useEffect(() => setMenu(false), [page])
+  // On a phone the sidebar is a sheet: anything opened from it, or a course switch, closes it.
+  useEffect(() => {
+    if (settings || courseForm) setMenu(false)
+  }, [settings, courseForm])
+  useEffect(() => setMenu(false), [course])
   useEffect(() => {
     document.querySelector('.console-main')?.scrollTo({ top: 0 })
   }, [page])
@@ -137,12 +159,64 @@ export function Console({ page }: { page: Page }) {
           <IconX size={16} />
         </button>
       </div>
-      <div class="sidebar-course">
-        <div class="sidebar-course-code">
-          {course.code} <span class="muted">· {course.term}</span>
+      <button type="button" class="sidebar-course" ref={switchRef} onClick={() => setSwitcher((v) => !v)} aria-expanded={switcher} aria-haspopup="menu">
+        <span class="sidebar-course-text">
+          <span class="sidebar-course-code">
+            {course.code} <span class="muted">· {isDemo() ? 'demo course' : course.term}</span>
+          </span>
+          <span class="sidebar-course-title">{course.title}</span>
+        </span>
+        <IconChevron size={14} />
+      </button>
+      <Popover anchor={switchRef.current} open={switcher} onClose={() => setSwitcher(false)} class="menu">
+        <div role="menu" aria-label="Courses">
+          <button
+            type="button"
+            role="menuitem"
+            class="menu-item"
+            onClick={() => {
+              setSwitcher(false)
+              setWorkspace({ active: 'demo', mine: workspace.mine })
+            }}
+          >
+            <span class="menu-check">{isDemo() ? <IconCheck size={14} /> : null}</span>
+            <span>
+              CHEM 11 <span class="muted">· demo course</span>
+            </span>
+          </button>
+          {workspace.mine ? (
+            <button
+              type="button"
+              role="menuitem"
+              class="menu-item"
+              onClick={() => {
+                setSwitcher(false)
+                setWorkspace({ active: 'mine', mine: workspace.mine })
+              }}
+            >
+              <span class="menu-check">{!isDemo() ? <IconCheck size={14} /> : null}</span>
+              <span>
+                {workspace.mine.code} <span class="muted">· your course</span>
+              </span>
+            </button>
+          ) : null}
+          <div class="menu-sep" />
+          <button
+            type="button"
+            role="menuitem"
+            class="menu-item"
+            onClick={() => {
+              setSwitcher(false)
+              setCourseForm(workspace.mine ? 'edit' : 'create')
+            }}
+          >
+            <span class="menu-check">
+              <IconPlus size={14} />
+            </span>
+            <span>{workspace.mine ? `Edit ${workspace.mine.code} details` : 'Set up your own course'}</span>
+          </button>
         </div>
-        <div class="sidebar-course-title">{course.title}</div>
-      </div>
+      </Popover>
       <ul class="nav-list">
         {PAGES.map((x) => (
           <li key={x.id}>
@@ -167,13 +241,22 @@ export function Console({ page }: { page: Page }) {
           </a>
         </li>
       </ul>
+      <div class="nav-group-label">For the founder</div>
+      <ul class="nav-list">
+        <li>
+          <a href="#experiment" class={cx('nav-item', page === 'experiment' && 'is-active')} aria-current={page === 'experiment' ? 'page' : undefined}>
+            <span>The experiment</span>
+          </a>
+        </li>
+      </ul>
       <div class="sidebar-foot">
         <TutorSwitch />
         <div class="sidebar-owner">
           <span>
-            {prof.name} · <span class="muted">{prof.title}</span>
+            {prof.name}
+            {prof.title && <span class="muted"> · {prof.title}</span>}
           </span>
-          <button type="button" class="icon-btn" aria-label="Demo settings" title="Demo settings" onClick={() => setReset(true)}>
+          <button type="button" class="icon-btn" aria-label="Settings" title="Settings" onClick={() => setSettings(true)}>
             <IconMore size={16} />
           </button>
         </div>
@@ -188,12 +271,37 @@ export function Console({ page }: { page: Page }) {
       <div class="console-main">
         <header class="mobile-bar">
           <button type="button" class="mobile-menu" onClick={() => setMenu(true)} aria-label="Open menu">
-            <span>{PAGES.find((x) => x.id === page)?.label}</span>
+            <span>{page === 'experiment' ? 'The experiment' : PAGES.find((x) => x.id === page)?.label}</span>
             <IconChevron size={14} />
           </button>
           <Status tone={live ? 'live' : 'muted'}>{live ? 'On' : 'Off'}</Status>
         </header>
-        {!live && page !== 'golive' && (
+        {strip && page !== 'experiment' && (
+          <div class="mvp-strip" role="note">
+            <span>
+              <strong>ES 30 MVP.</strong> Testing one assumption: will professors hand over their materials and announce a course tutor to their class?
+            </span>
+            <a href="#experiment" class="link-btn">
+              See the experiment
+            </a>
+            <button
+              type="button"
+              class="icon-btn"
+              aria-label="Hide this note"
+              onClick={() => {
+                setStrip(false)
+                try {
+                  localStorage.setItem(STRIP_KEY, '1')
+                } catch {
+                  /* storage blocked */
+                }
+              }}
+            >
+              <IconX size={14} />
+            </button>
+          </div>
+        )}
+        {!live && page !== 'golive' && page !== 'experiment' && (
           <div class="state-banner" role="status">
             <span>
               {s.live ? 'The tutor is paused.' : 'Your tutor is off.'} Students who open it see a notice that {prof.short} has paused it.
@@ -210,36 +318,23 @@ export function Console({ page }: { page: Page }) {
           {page === 'preview' && <Preview />}
           {page === 'questions' && <Questions />}
           {page === 'golive' && <GoLive />}
+          {page === 'experiment' && <Experiment />}
         </main>
       </div>
-      <Dialog
-        open={reset}
-        onClose={() => setReset(false)}
-        title="Reset this demo?"
-        actions={
-          <>
-            <Button variant="secondary" onClick={() => setReset(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => {
-                resetAll()
-                setReset(false)
-                go('overview')
-                toast('Demo reset')
-              }}
-            >
-              Reset everything
-            </Button>
-          </>
-        }
-      >
-        <p>
-          This clears your source decisions, rules, corrections, test questions and the question log in this browser, so the next professor starts fresh. Nothing
-          is sent anywhere.
-        </p>
-      </Dialog>
+      <SettingsPanel
+        open={settings}
+        onClose={() => setSettings(false)}
+        onEditCourse={() => {
+          setSettings(false)
+          setCourseForm('edit')
+        }}
+        onCreateCourse={() => {
+          setSettings(false)
+          if (workspace.mine) setWorkspace({ active: 'mine', mine: workspace.mine })
+          else setCourseForm('create')
+        }}
+      />
+      <CourseForm open={!!courseForm} mode={courseForm ?? 'create'} onClose={() => setCourseForm(null)} />
     </div>
   )
 }

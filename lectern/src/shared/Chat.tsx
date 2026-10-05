@@ -23,12 +23,7 @@ export type Turn =
 
 const uid = () => Math.random().toString(36).slice(2, 9)
 
-const READING = [
-  'Searching lecture transcripts',
-  `Reading ${course.professor.short}’s Ed answers`,
-  'Checking the slides',
-  'Looking through the syllabus',
-]
+const reading = () => ['Searching lecture transcripts', `Reading ${course.professor.short}’s materials`, 'Checking the slides', 'Looking through the syllabus']
 
 export function useChat(ctx: TutorContext, onAnswered?: (q: string, r: TutorResult) => void) {
   const [turns, setTurns] = useState<Turn[]>([])
@@ -88,7 +83,7 @@ function ReadingLine({ read }: { read: Hit[] }) {
     return () => clearInterval(t)
   }, [])
   const names = [...new Set(read.map((h) => h.source.title.split('·')[0].trim()))]
-  const text = names.length ? `Reading ${names.slice(0, 3).join(', ')}${names.length > 3 ? ` and ${names.length - 3} more` : ''}` : READING[i % READING.length]
+  const text = names.length ? `Reading ${names.slice(0, 3).join(', ')}${names.length > 3 ? ` and ${names.length - 3} more` : ''}` : reading()[i % reading().length]
   return (
     <div class="reading" aria-live="polite">
       <span class="reading-bar" />

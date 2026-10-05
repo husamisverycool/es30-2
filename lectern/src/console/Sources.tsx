@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from 'preact/hooks'
-import { course, allSources, statusOf, prof } from '../app/context'
+import { course, allSources, statusOf, isDemo } from '../app/context'
 import type { ReviewStatus, Source, SourceKind } from '../data/types'
 import { getState, update, useStore } from '../state/store'
 import { citedIds } from '../engine/tutor'
-import { ACCEPT, sourceFromFile, sourceFromPaste } from '../engine/ingest'
+import { ACCEPT, guessKind, sourceFromFile, sourceFromPaste } from '../engine/ingest'
 import { SourceView } from '../shared/SourceView'
 import { IconTrash, IconUpload, kindIcon } from '../ui/icons'
 import { Button, Dialog, Panel, Status, Switch, cx, fmtDate, toast } from '../ui/kit'
@@ -90,7 +90,7 @@ export function Sources() {
     <>
       <PageHead
         title="Sources"
-        sub={`The tutor can use only the sources you approve. Lectern recommends a decision for each one; the decision is yours.`}
+        sub={isDemo() ? 'The tutor can use only the sources you approve. Lectern recommends a decision for each one; the decision is yours.' : 'The tutor can use only the sources listed here as approved. Anything you add is approved; leave out any source and it stops being used straight away.'}
         actions={
           <>
             <Button variant="secondary" icon={<IconUpload size={16} />} onClick={() => setAdding(true)}>
@@ -105,6 +105,19 @@ export function Sources() {
         }
       />
 
+      {all.length === 0 ? (
+        <div class="empty sources-empty">
+          <h2 class="section-title">Add your course materials</h2>
+          <p class="muted">
+            Start with your syllabus and two or three lectures. Caption files from Panopto, Zoom or Canvas Studio (.vtt or .srt) keep their timestamps, so the tutor can point
+            students to the exact minute. PDFs of slides, problem sets and notes work too. Nothing leaves this browser.
+          </p>
+          <Button variant="primary" icon={<IconUpload size={16} />} onClick={() => setAdding(true)}>
+            Add a source
+          </Button>
+        </div>
+      ) : (
+        <>
       <div class="coverage">
         <div class="coverage-text tnum">
           <strong>
@@ -115,8 +128,8 @@ export function Sources() {
           </span>
         </div>
         <div class="coverage-bar" role="progressbar" aria-valuemin={0} aria-valuemax={all.length} aria-valuenow={decided} aria-label="Sources reviewed">
-          <span class="coverage-approved" style={{ width: `${(approved / all.length) * 100}%` }} />
-          <span class="coverage-excluded" style={{ width: `${(excluded / all.length) * 100}%` }} />
+          <span class="coverage-approved" style={{ width: `${(approved / Math.max(1, all.length)) * 100}%` }} />
+          <span class="coverage-excluded" style={{ width: `${(excluded / Math.max(1, all.length)) * 100}%` }} />
         </div>
       </div>
 
@@ -177,6 +190,9 @@ export function Sources() {
           </tbody>
         </table>
       </div>
+
+        </>
+      )}
 
       {sel.size > 0 && (
         <div class="bulk-bar" role="toolbar" aria-label="Selected sources">
@@ -334,6 +350,7 @@ function AddSource({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [err, setErr] = useState('')
   const [title, setTitle] = useState('')
   const [kind, setKind] = useState<SourceKind>('upload')
+  const [kindTouched, setKindTouched] = useState(false)
   const [text, setText] = useState('')
   const [drag, setDrag] = useState(false)
   const input = useRef<HTMLInputElement>(null)
@@ -346,9 +363,11 @@ function AddSource({ open, onClose }: { open: boolean; onClose: () => void }) {
       },
       { kind: 'added-source', detail: `Added ${src.title}` },
     )
-    toast(`Added ${src.title} · ${src.passages.length} passages`)
+    toast(`Added ${src.title} · ${src.passages.length} ${src.passages.length === 1 ? 'passage' : 'passages'}`)
     setTitle('')
     setText('')
+    setKind('upload')
+    setKindTouched(false)
     setErr('')
     onClose()
   }
@@ -367,7 +386,7 @@ function AddSource({ open, onClose }: { open: boolean; onClose: () => void }) {
   }
 
   return (
-    <Panel open={open} onClose={onClose} title="Add a source" sub={`Anything you add is approved, because you added it. ${prof.short} can remove it at any time.`} width={520}>
+    <Panel open={open} onClose={onClose} title="Add a source" sub="Anything you add is approved, because you added it. You can leave it out at any time." width={520}>
       <div class="tabs tabs-full" role="tablist">
         <button type="button" role="tab" aria-selected={tab === 'file'} class={cx('tab', tab === 'file' && 'is-active')} onClick={() => setTab('file')}>
           Upload a file
@@ -417,13 +436,28 @@ function AddSource({ open, onClose }: { open: boolean; onClose: () => void }) {
             <label class="field-label" for="paste-title">
               Title
             </label>
-            <input id="paste-title" class="input" value={title} placeholder="Lecture 14 · Buffers" onInput={(e) => setTitle((e.target as HTMLInputElement).value)} />
+            <input
+              id="paste-title"
+              class="input"
+              value={title}
+              placeholder="Lecture 14 · Buffers"
+              onInput={(e) => {
+                const v = (e.target as HTMLInputElement).value
+                setTitle(v)
+                // Until the type is chosen by hand, follow the title: "Syllabus" sets Syllabus, "Lecture 4" sets Lecture.
+                if (!kindTouched) setKind(guessKind(v))
+              }}
+            />
           </div>
           <div class="field">
             <label class="field-label" for="paste-kind">
               Type
             </label>
-            <select id="paste-kind" class="select" value={kind} onChange={(e) => setKind((e.target as HTMLSelectElement).value as SourceKind)}>
+            <select id="paste-kind" class="select" value={kind} onChange={(e) => {
+                setKindTouched(true)
+                setKind((e.target as HTMLSelectElement).value as SourceKind)
+              }}
+            >
               <option value="upload">Notes or handout</option>
               <option value="lecture">Lecture transcript</option>
               <option value="slides">Slides</option>

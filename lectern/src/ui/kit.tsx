@@ -220,3 +220,6 @@ export function fmtTime(iso: string) {
 export function fmtDate(iso: string) {
   return asDate(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: TZ })
 }
+
+/** "1 source", "3 sources". */
+export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`

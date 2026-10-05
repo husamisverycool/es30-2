@@ -1,26 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { course, allSources, statusOf, useTutorContext, prof } from '../app/context'
+import { course, allSources, statusOf, useTutorContext, prof, isDemo } from '../app/context'
 import { addLiveEntry, isLive, update, useStore } from '../state/store'
 import { classify } from '../engine/classify'
 import { Composer, TutorTurn, useChat, useSuggestions } from '../shared/Chat'
 import { SourceView } from '../shared/SourceView'
 import { citeText } from '../shared/Answer'
 import { IconThumb, IconLectern, IconPause, IconCopy, kindIcon } from '../ui/icons'
-import { Panel, Status, toast, copyText, fmtDate } from '../ui/kit'
+import { Panel, Status, toast, copyText, fmtDate, plural } from '../ui/kit'
 import type { Source } from '../data/types'
+import { published } from '../state/publish'
 
-const STARTERS = [
+const DEMO_STARTERS = [
   'Why do we leave solids out of K?',
   'When can I use the small-x approximation?',
   'What happens if you add argon to an equilibrium?',
 ]
+const OWN_STARTERS = ['What does the syllabus say about late work?', 'When is the first exam?', 'What was the main idea of the last lecture?']
 
 function countBy(sources: Source[]) {
   const n = (k: string) => sources.filter((s) => s.kind === k).length
   const ed = sources.find((s) => s.kind === 'ed')
   const parts: string[] = []
-  if (n('lecture')) parts.push(`${n('lecture')} lectures`)
-  if (n('slides')) parts.push(`${n('slides')} slide decks`)
+  if (n('lecture')) parts.push(plural(n('lecture'), 'lecture'))
+  if (n('slides')) parts.push(plural(n('slides'), 'slide deck'))
   if (n('syllabus')) parts.push('the syllabus')
   if (n('exam')) parts.push(n('exam') === 1 ? 'a practice exam' : `${n('exam')} practice exams`)
   if (ed) parts.push(`${prof.short}’s answers on Ed`)
@@ -49,7 +51,7 @@ export function Student() {
   })
   const asked = chat.turns.filter((t) => t.role === 'user').map((t) => (t as { text: string }).text)
   const lastTopic = asked.length ? classify(asked[asked.length - 1], course) : null
-  const suggestions = useSuggestions(lastTopic, asked, STARTERS)
+  const suggestions = useSuggestions(lastTopic, asked, isDemo() ? DEMO_STARTERS : OWN_STARTERS)
 
   useEffect(() => {
     const el = listRef.current
@@ -98,10 +100,16 @@ export function Student() {
               <p class="overview-built">
                 {approved.length ? `Built from ${countBy(approved)}, approved by ${prof.short}.` : `${prof.short} hasn’t approved any materials yet.`}
               </p>
-              <p class="overview-summary">
-                The course so far runs from <strong>measurement and the mole</strong> through <strong>stoichiometry</strong>, <strong>gases</strong> and{' '}
-                <strong>thermochemistry</strong> to this week’s <strong>equilibrium</strong> lectures and the first lecture on <strong>acids and pH</strong>.
-              </p>
+              {isDemo() ? (
+                <p class="overview-summary">
+                  The course so far runs from <strong>measurement and the mole</strong> through <strong>stoichiometry</strong>, <strong>gases</strong> and{' '}
+                  <strong>thermochemistry</strong> to this week’s <strong>equilibrium</strong> lectures and the first lecture on <strong>acids and pH</strong>.
+                </p>
+              ) : (
+                <p class="overview-summary">
+                  Ask about anything in {course.code}: a lecture you want explained again, where a topic was covered, or what the syllabus says.
+                </p>
+              )}
             </section>
           )}
           {/* The notice opens every chat, CS50-duck style, and comes back after Clear chat. */}
@@ -109,7 +117,12 @@ export function Student() {
             <p>
               I’m the {course.code} tutor. I answer only from materials <strong>{prof.short} approved</strong>, and I show where each answer comes from so you can
               rewatch the explanation. I’ll help you get unstuck on problem sets, but I won’t solve them or check your answers.{' '}
-              <strong>{prof.short} and the course staff can read the questions asked here.</strong> I can be wrong, so check the cited source.
+              {published ? (
+                <strong>Questions asked here stay on this device.</strong>
+              ) : (
+                <strong>{prof.short} and the course staff can read the questions asked here.</strong>
+              )}{' '}
+              I can be wrong, so check the cited source.
             </p>
           </div>
 
@@ -173,12 +186,13 @@ export function Student() {
             suggestions={live ? suggestions : []}
             scope={
               <button type="button" class="scope" onClick={() => setScopeOpen(true)}>
-                {approved.length} sources
+                {plural(approved.length, 'source')}
               </button>
             }
           />
           <p class="student-foot">
-            Answers use only {prof.short}’s approved materials · Course staff can see your questions · The tutor can be wrong, so check the source · Built with Lectern
+            Answers use only {prof.short}’s approved materials · {published ? 'Questions stay on this device' : 'Course staff can see your questions'} · The tutor can be wrong, so
+            check the source · Built with Lectern
           </p>
         </div>
       </div>
@@ -192,7 +206,7 @@ export function Student() {
         {panelSource && <SourceView source={panelSource} focus={panel?.passageId} />}
       </Panel>
 
-      <Panel open={scopeOpen} onClose={() => setScopeOpen(false)} title="What this tutor can use" sub={`${approved.length} sources approved by ${prof.short}`}>
+      <Panel open={scopeOpen} onClose={() => setScopeOpen(false)} title="What this tutor can use" sub={`${plural(approved.length, 'source')} approved by ${prof.short}`}>
         <ul class="scope-list">
           {approved.map((src) => {
             const Icon = kindIcon[src.kind] ?? kindIcon.upload
