@@ -80,7 +80,10 @@ Open the console in one tab and the student view in another: switching the tutor
 
 ## Put it on Netlify
 
-**Fastest (about a minute):** go to https://app.netlify.com/drop and drag `lectern-netlify.zip` (at the repo root) onto the page. Netlify gives you a public link right away. The student view is the same link with `#student` at the end.
+**Fastest (about two minutes):**
+1. Sign up or log in at https://app.netlify.com (free; "Sign up with Google" works). Do this first: a site dropped without an account is deleted after an hour.
+2. Go to https://app.netlify.com/drop and drag `lectern-netlify.zip` (at the repo root) onto the page.
+3. Netlify shows a link like `https://something-123.netlify.app`. That's the MVP. The student view is the same link with `#student` at the end. To get a nicer name, open **Site configuration → Change site name**.
 
 **From Git:** connect this repo in Netlify. `netlify.toml` at the repo root already tells it to build `lectern/` and publish `lectern/dist`.
 

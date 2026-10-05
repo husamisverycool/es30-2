@@ -10,11 +10,8 @@ import { Panel, Status, toast, copyText, fmtDate, plural } from '../ui/kit'
 import type { Source } from '../data/types'
 import { published } from '../state/publish'
 
-const DEMO_STARTERS = [
-  'Why do we leave solids out of K?',
-  'When can I use the small-x approximation?',
-  'What happens if you add argon to an equilibrium?',
-]
+// Each starter has an answer prepared from her materials, so the first click reads like her.
+const DEMO_STARTERS = ['When can we use the small x approximation?', 'Can Q be bigger than K?', 'If I multiply a reaction by 2, does K double?']
 const OWN_STARTERS = ['What does the syllabus say about late work?', 'When is the first exam?', 'What was the main idea of the last lecture?']
 
 function countBy(sources: Source[]) {

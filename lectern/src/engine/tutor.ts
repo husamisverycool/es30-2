@@ -1,7 +1,7 @@
 import type { Answer, Course, Outcome, Passage, Source } from '../data/types'
 import { Index, type Hit } from './search'
 import { asksExamContent, isLogistics, matchPset } from './guard'
-import { expand, fold, overlap, sentences, tokens } from './text'
+import { expand, fold, matchScore, overlap, sentences, tokens } from './text'
 import { ruleOn } from './rules'
 import { disableSample, getSample, PERMANENT, type SampleError } from './claude'
 import { getApiKey, streamAnswer, type ApiError } from './anthropic'
@@ -92,7 +92,7 @@ function prepared(question: string, ctx: TutorContext): { answer: Answer; method
   let best: { text: string; answer: Answer } | null = null
   let bestScore = 0
   for (const q of pool) {
-    const s = questionKey(q.text) === key ? 1 : overlap(q.text, question)
+    const s = questionKey(q.text) === key ? 1 : matchScore(q.text, question)
     if (s > bestScore) {
       bestScore = s
       best = q
@@ -194,6 +194,11 @@ function notCovered(ctx: TutorContext, hits: Hit[], ahead?: Upcoming | null): Tu
   }
 }
 
+// Housekeeping sentences: deadlines, reading and slide pointers, greetings, wrap-ups.
+const META =
+  /\b(problem set \d+ (is|was) (due|posted)|is due (friday|monday|tonight|tomorrow|today)|good (morning|afternoon)|brown,? chapter|chapter \d+,? section|today:|last time|next time|see you|that's (it|all) for today|any questions)\b/i
+const isMeta = (sentence: string) => META.test(sentence) || (sentence.length < 70 && /\bslide \d+\.?$/i.test(sentence))
+
 // Slides read as fragments and the syllabus as policy, so prefer spoken explanations for the main quote.
 const QUOTE_KIND: Record<string, number> = { slides: 0.75, syllabus: 0.85 }
 
@@ -221,8 +226,15 @@ export function bestQuote(hits: Hit[], query: string, index: Index, sources: Sou
     const next = src && src.kind === 'lecture' && idx >= 0 ? src.passages[idx + 1] : undefined
     const ss = next ? [...own, ...sentences(next.text).slice(0, len).map((s) => ({ s, id: next.id }))] : own
     for (let i = 0; i < own.length; i++) {
-      const win = ss.slice(i, i + len)
-      const text = win.map((x) => x.s).join(' ')
+      // Score the window as spoken, but show it starting on the explanation, not on housekeeping
+      // ("Hess's law, slide 9." or "Problem Set 4 is due Friday"), and read on past a rhetorical question.
+      const scored = ss.slice(i, i + len)
+      let start = i
+      while (start < ss.length - 1 && start < i + len - 1 && isMeta(ss[start].s)) start++
+      let win = ss.slice(start, start + len)
+      while (win.length > 1 && isMeta(win[win.length - 1].s)) win = win.slice(0, -1)
+      for (let j = start + win.length; j < ss.length && win.length < len + 2 && /\?["”’)]?$/.test(win[win.length - 1].s); j++) win = [...win, ss[j]]
+      const text = scored.map((x) => x.s).join(' ')
       const wt = tokens(text)
       const set = new Set(wt)
       const bi = new Set(wt.slice(1).map((t, j) => `${wt[j]} ${t}`))
@@ -235,10 +247,29 @@ export function bestQuote(hits: Hit[], query: string, index: Index, sources: Sou
       if (src?.kind === 'lecture' && (idx === 0 || idx === src.passages.length - 1)) v *= 0.8
       // Between equal windows, prefer the tighter one.
       v /= 1 + wt.length / 400
-      if (v > best.v) best = { hit: h, text, ids: [...new Set(win.map((x) => x.id))], v }
+      if (v > best.v) best = { hit: h, text: win.map((x) => x.s).join(' '), ids: [...new Set(win.map((x) => x.id))], v }
     }
   }
   return best
+}
+
+/** How a quoted answer introduces its source, in words a student reads naturally. */
+function leadIn(h: Hit, who: string): string {
+  const src = h.source
+  if (src.kind === 'lecture') return `${who} explains this in **${sourceShort(src)}, at ${h.passage.loc}**:`
+  if (src.kind === 'ed') return `${who} answered this on Ed (**post ${h.passage.loc.replace(/^Ed\s*/, '')}**):`
+  if (src.kind === 'syllabus') return `The syllabus covers this under **${h.passage.loc}**:`
+  if (src.kind === 'slides') return `It’s on **${sourceShort(src)}, ${h.passage.loc.toLowerCase()}**:`
+  if (src.kind === 'exam') return `It comes up in **${sourceShort(src)}, ${h.passage.loc}**:`
+  return `From **${citeLabel(src, h.passage)}**:`
+}
+
+function alsoIn(h: Hit, who: string): string {
+  const src = h.source
+  if (src.kind === 'lecture') return `${who} comes back to it in **${sourceShort(src)}, at ${h.passage.loc}**`
+  if (src.kind === 'ed') return `${who} also answered it on Ed (**post ${h.passage.loc.replace(/^Ed\s*/, '')}**)`
+  if (src.kind === 'syllabus') return `The syllabus adds, under **${h.passage.loc}**`
+  return `It’s also in **${citeLabel(src, h.passage)}**`
 }
 
 // Deadlines, dates and places are syllabus facts: quote the syllabus first when it has the answer.
@@ -260,11 +291,12 @@ function quoted(question: string, all: Hit[], index: Index, ctx: TutorContext): 
   const policy = (h: Hit) => h.source.kind === 'syllabus' && /\bAI\b|collab/i.test(h.passage.loc)
   const rest = hits.filter((h) => h.source.id !== main.hit.source.id && !policy(h))
   const second = rest.length ? bestQuote(rest, question, index, ctx.sources, 2) : null
-  const where = main.hit.source.kind === 'lecture' ? `${sourceShort(main.hit.source)} at ${main.hit.passage.loc}` : citeLabel(main.hit.source, main.hit.passage)
-  const lines = [`The passage in ${ctx.course.professor.short}’s materials that best matches your question is from **${where}**:`, `> ${main.text} ${main.ids.map((id) => `[[${id}]]`).join(' ')}`]
+  const who = ctx.course.professor.short
+  const lines = [leadIn(main.hit, who), `> ${main.text} ${main.ids.map((id) => `[[${id}]]`).join(' ')}`]
   if (second && second.v > main.v * 0.4) {
-    lines.push(`It also comes up in **${citeLabel(second.hit.source, second.hit.passage)}**: “${second.text}” ${second.ids.map((id) => `[[${id}]]`).join(' ')}`)
+    lines.push(`${alsoIn(second.hit, who)}: “${second.text}” ${second.ids.map((id) => `[[${id}]]`).join(' ')}`)
   }
+  lines.push(`Tap a number to open the ${main.hit.source.kind === 'lecture' ? 'transcript at that moment' : 'source'}. If this doesn’t answer it, ask it a different way or post on Ed.`)
   const read = all.some((h) => h.passage.id === main.hit.passage.id) ? all : [main.hit, ...all]
   return { answer: { outcome: 'answered', body: lines.join('\n\n') }, method: 'quoted', read }
 }

@@ -158,3 +158,29 @@ export function overlap(a: string, b: string): number {
   for (const t of A) if (B.has(t)) n++
   return (2 * n) / (A.size + B.size)
 }
+
+/**
+ * Stricter similarity for reusing a prepared answer: "small-x" matches "small x", and short symbols
+ * (K, Q, Kp, x) weigh heavily, so a question about Q never picks up an answer written about K.
+ */
+export function matchScore(a: string, b: string): number {
+  const toks = (t: string) => new Set(tokens(t.replace(/(\w)-(\w)/g, '$1 $2')))
+  const A = toks(a)
+  const B = toks(b)
+  if (!A.size || !B.size) return 0
+  const w = (t: string) => (t.length <= 2 ? 4 : 1)
+  let shared = 0
+  let total = 0
+  let sharedWords = 0
+  for (const t of A) {
+    total += w(t)
+    if (B.has(t)) {
+      shared += w(t)
+      if (t.length > 2) sharedWords++
+    }
+  }
+  // Symbols alone ("K and Q") aren't enough to call two questions the same.
+  if (!sharedWords) return 0
+  for (const t of B) total += w(t)
+  return (2 * shared) / total
+}
